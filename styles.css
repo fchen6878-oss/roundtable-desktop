@@ -120,12 +120,10 @@ main { flex: 1; display: flex; flex-direction: column; position: relative; }
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: var(--sp-3);
 }
-.panel-head .logo {
+.head-info .logo-img {
   width: 34px; height: 34px; border-radius: var(--r-md);
-  background: var(--accent);            /* 纯色，杜绝渐变 */
-  color: var(--on-accent);
-  display: grid; place-items: center; flex: none;
-  --ic-size: 18px;
+  object-fit: contain;
+  flex: none;
 }
 .panel-head h1 { font-size: var(--fs-16); margin: 0; font-weight: 700; letter-spacing: -.01em; }
 .panel-head .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
