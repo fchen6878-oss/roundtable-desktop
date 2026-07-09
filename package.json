@@ -29,7 +29,7 @@
       "src/**/*",
       "proxy.js"
     ],
-    "icon": "build/icon.ico",
+    "icon": "build/icon-dialogue.ico",
     "directories": {
       "output": "dist",
       "buildResources": "build"

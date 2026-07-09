@@ -242,6 +242,7 @@ function createWindow() {
     minHeight: 600,
     title: '圆桌会议',
     backgroundColor: '#f5f6f8',
+    icon: path.join(__dirname, '..', 'build', 'icon-dialogue.ico'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
