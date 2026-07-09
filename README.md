@@ -1,7 +1,7 @@
 # 圆桌会议 / Roundtable Desktop
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fchen6878-oss/roundtable-desktop/main/build/icon-dialogue.png" alt="Roundtable" width="96">
+  <img src="https://raw.githubusercontent.com/fchen6878-oss/roundtable-desktop/main/assets/icon-dialogue.png" alt="Roundtable" width="96">
 </p>
 
 <p align="center">

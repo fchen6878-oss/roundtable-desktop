@@ -27,7 +27,8 @@
       "index.html",
       "styles.css",
       "src/**/*",
-      "proxy.js"
+      "proxy.js",
+      "assets/**/*"
     ],
     "icon": "build/icon-dialogue.ico",
     "directories": {
