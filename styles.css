@@ -438,7 +438,22 @@ textarea { resize: vertical; min-height: 58px; line-height: 1.5; }
   border-radius: var(--r-lg); box-shadow: var(--shadow-lg); padding: 14px 16px;
   z-index: 30; font-size: var(--fs-13);
 }
-.bp-head { font-weight: 700; font-size: var(--fs-14); margin-bottom: 10px; color: var(--text); }
+.bp-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: var(--fs-14); margin-bottom: 10px; color: var(--text); }
+.bp-close {
+  width: 24px; height: 24px;
+  border: none !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  border-radius: var(--r-sm) !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.bp-close:hover { background: var(--surface-hover) !important; color: var(--text) !important; }
 .bp-sub { font-size: var(--fs-12); color: var(--text-muted); margin: 12px 0 8px; font-weight: 600; }
 .bp-empty { font-size: var(--fs-12); color: var(--text-muted); padding: 6px 2px; font-style: italic; }
 .bp-snap {

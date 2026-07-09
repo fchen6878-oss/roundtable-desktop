@@ -953,7 +953,13 @@
     const panel = $('#branchPanel');
     if (!panel) return;
     panel.innerHTML = '';
-    panel.appendChild(el('div', 'bp-head has-ic ic-branch', '分支时间线'));
+    const head = el('div', 'bp-head');
+    head.appendChild(el('span', 'has-ic ic-branch', '分支时间线'));
+    const closeBtn = el('button', 'bp-close has-ic ic-x', '');
+    closeBtn.title = '关闭';
+    closeBtn.addEventListener('click', () => { panel.classList.add('hidden'); pendingSnap = null; });
+    head.appendChild(closeBtn);
+    panel.appendChild(head);
 
     const eng = activeBranch ? activeBranch.engine : null;
     const snaps = (eng && eng.snapshots) || [];
@@ -1263,6 +1269,32 @@
     $('#directorSend').addEventListener('click', sendDirector);
     $('#directorInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendDirector(); });
     updateHead(state.topic, state.mode, '空闲');
+
+    // ── 菜单栏事件监听（主进程 Menu 通过 webContents.dispatchCustomEvent 触发）──
+    const menuActions = {
+      'start': () => { if (!running) startMeeting(); },
+      'toggle-pause': () => { if (running) togglePause(); },
+      'end': () => { if (running) endMeeting(); },
+      'reset': resetMeeting,
+      'director': sendDirector,
+      'export': exportMarkdown,
+      'compare': openCompare,
+      'branch': () => {
+        const p = $('#branchPanel');
+        if (p.classList.contains('hidden')) { renderBranchPanel(); p.classList.remove('hidden'); }
+        else { p.classList.add('hidden'); pendingSnap = null; }
+      },
+      'settings': openSettings,
+    };
+    Object.entries(menuActions).forEach(([name, fn]) => {
+      document.addEventListener('menu:' + name, fn);
+    });
+
+    // 菜单速度选择
+    document.addEventListener('menu:speed', (e) => {
+      const sel = $('#speedSel');
+      if (sel) { sel.value = e.detail || 'normal'; sel.dispatchEvent(new Event('change')); }
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
