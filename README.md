@@ -23,11 +23,9 @@
 
 ## 截图 / Screenshots
 
-| 辩论进行中 | 分支对比 |
+| 多角色辩论进行中 | 模型接入设置 |
 |:---:|:---:|
-| *Coming soon* | *Coming soon* |
-
-> （首次发布后补充实际截图）
+| <img src="docs/screenshots/debate-main.png" alt="辩论主界面" width="560"> | <img src="docs/screenshots/model-settings.png" alt="模型设置" width="420"> |
 
 ## 快速开始 / Quick Start
 
