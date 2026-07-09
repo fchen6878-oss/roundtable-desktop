@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>圆桌会议 · Roundtable</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -11,12 +14,12 @@
     <!-- 左侧：会议筹备 -->
     <aside class="panel">
       <div class="panel-head">
-        <div class="logo">🗣️</div>
+        <div class="logo has-ic ic-users" title="圆桌会议"></div>
         <div class="ph-title">
           <h1>圆桌会议</h1>
           <div class="sub">大模型驱动 · 多角色可编排</div>
         </div>
-        <button id="settingsBtn" class="icon-btn" title="模型接入设置（真实模式）">⚙</button>
+        <button id="settingsBtn" class="icon-btn has-ic ic-settings" title="模型接入设置（真实模式）" aria-label="模型接入设置"></button>
       </div>
       <div class="panel-body">
         <div class="field">
@@ -74,37 +77,50 @@
           <span>角色与模型绑定</span>
         </div>
         <div id="roleList"></div>
-        <button id="addRoleBtn" class="btn btn-add">＋ 添加角色</button>
+        <button id="addRoleBtn" class="btn btn-add has-ic ic-plus">添加角色</button>
 
         <div class="field" style="margin-top:18px">
-          <button id="startBtn" class="btn btn-primary">▶ 开始会议</button>
+          <button id="startBtn" class="btn btn-primary has-ic ic-play">开始会议</button>
         </div>
-        <div class="hint">默认「模拟回复」模式，无需任何 API key 即可运行。点左上角 ⚙ 可单独配置真实模型接入：OpenAI / Anthropic / Ollama 与任意自定义模型均在此添加（密钥以掩码保存，可点击 👁 查看明文）。</div>
+        <div class="hint">默认「模拟回复」模式，无需任何 API key 即可运行。点左上角「设置」可单独配置真实模型接入：OpenAI / Anthropic / Ollama 与任意自定义模型均在此添加（密钥以掩码保存，可点击「明文」查看）。</div>
       </div>
     </aside>
 
     <!-- 右侧：观看舞台 -->
     <main class="stage">
       <div class="stage-head">
-        <div id="topicPill" class="topic-pill">议题：…</div>
-        <div id="runModeSeg" class="seg run-mode-seg">
-          <button type="button" class="seg-btn active" data-rmode="mock">🎭 模拟模式</button>
-          <button type="button" class="seg-btn" data-rmode="real">🤖 真实模型</button>
+        <div class="head-info">
+          <div id="topicPill" class="topic-pill">议题：…</div>
+          <div class="head-status">
+            <div id="runModeSeg" class="seg run-mode-seg">
+              <button type="button" class="seg-btn active" data-rmode="mock">模拟</button>
+              <button type="button" class="seg-btn" data-rmode="real">真实</button>
+            </div>
+            <span class="vsep"></span>
+            <span id="modeBadge" class="mode-badge">—</span>
+            <span id="phaseBadge" class="phase-badge">空闲</span>
+          </div>
         </div>
-        <span id="modeBadge" class="mode-badge">—</span>
-        <span id="phaseBadge" class="phase-badge">阶段：空闲</span>
         <div class="toolbar">
-          <button id="compareBtn" class="btn btn-sm btn-ghost">🔬 对比</button>
-          <button id="branchBtn" class="btn btn-sm btn-ghost">🌿 分支</button>
-          <button id="endBtn" class="btn btn-sm btn-ghost" disabled>⏹ 结束</button>
-          <button id="exportBtn" class="btn btn-sm">⬇ 导出纪要</button>
-          <button id="resetBtn" class="btn btn-sm btn-ghost">↺ 重置</button>
+          <button id="compareBtn" class="btn btn-sm btn-ghost has-ic ic-scale" title="对比分支观点碰撞图">对比</button>
+          <button id="branchBtn" class="btn btn-sm btn-ghost has-ic ic-branch" title="查看分支时间线">分支</button>
+          <div class="tb-sep"></div>
+          <button id="pauseBtn" class="btn btn-sm btn-ghost has-ic ic-pause" disabled title="暂停/继续会议">暂停</button>
+          <button id="endBtn" class="btn btn-sm btn-ghost has-ic ic-stop" disabled title="结束当前会议">结束</button>
+          <div class="tb-sep"></div>
+          <button id="exportBtn" class="btn btn-sm btn-primary has-ic ic-download" title="导出会议纪要">导出纪要</button>
+          <button id="resetBtn" class="btn btn-sm btn-ghost has-ic ic-reset" title="重新开始">重置</button>
+          <select id="speedSel" class="speed-sel" title="会议节奏">
+            <option value="slow">慢速</option>
+            <option value="normal" selected>正常</option>
+            <option value="fast">快速</option>
+          </select>
         </div>
       </div>
 
       <div id="chat" class="chat">
         <div id="emptyState" class="empty">
-          <div class="big">🗳️</div>
+          <div class="big has-ic ic-message"></div>
           <h2>一场虚拟圆桌，正在等待开场</h2>
           <p>左侧配置议题、主持人与多位持不同立场的角色，选择讨论模式，<br/>点击「开始会议」，即可观看大模型（模拟）上演一场有来有回的讨论。</p>
         </div>

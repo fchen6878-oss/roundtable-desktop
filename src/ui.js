@@ -37,7 +37,7 @@
   // 每个场景的角色「领域」字段都经过设计，能命中 mock.js 中对应的领域词库，发言更对味。
   const SCENES = {
     tech: {
-      name: '技术决策', icon: '💻',
+      name: '技术决策', icon: 'tech',
       topic: '我们团队是否应该立刻全面转向 AI 辅助编程？',
       roles: [
         { name: '王刚', title: 'CTO', avatar: '🛠️', stance: 'con', personality: '保守', domain: '技术架构与可维护性' },
@@ -47,7 +47,7 @@
       ]
     },
     product: {
-      name: '产品规划', icon: '🎯',
+      name: '产品规划', icon: 'product',
       topic: '下一代产品应该优先做「易用性」还是「功能丰富度」？',
       roles: [
         { name: '林岚', title: '产品负责人', avatar: '🧭', stance: 'con', personality: '理性', domain: '产品设计与用户体验' },
@@ -57,7 +57,7 @@
       ]
     },
     finance: {
-      name: '投资理财', icon: '📈',
+      name: '投资理财', icon: 'finance',
       topic: '当前是否应该把更多资产配置到权益类（股票 / 基金）？',
       roles: [
         { name: '陈老师', title: '理财顾问', avatar: '🧠', stance: 'pro', personality: '理性', domain: '投资理财与资产配置' },
@@ -67,7 +67,7 @@
       ]
     },
     edu: {
-      name: '教育成长', icon: '📚',
+      name: '教育成长', icon: 'edu',
       topic: '孩子升学应该优先冲名校，还是选更适合的学校？',
       roles: [
         { name: '王妈妈', title: '家长', avatar: '🌟', stance: 'pro', personality: '温和', domain: '家庭教育与升学' },
@@ -77,7 +77,7 @@
       ]
     },
     life: {
-      name: '生活抉择', icon: '🌈',
+      name: '生活抉择', icon: 'life',
       topic: '毕业后是先去大城市闯一闯，还是回老家安稳发展？',
       roles: [
         { name: '小北', title: '北漂青年', avatar: '🚀', stance: 'pro', personality: '激进', domain: '职业发展与生活选择' },
@@ -87,7 +87,7 @@
       ]
     },
     relation: {
-      name: '人际关系', icon: '💞',
+      name: '人际关系', icon: 'relation',
       topic: '亲密关系里，「给彼此空间」和「多陪伴」哪个更重要？',
       roles: [
         { name: '小雨', title: '伴侣A', avatar: '🌸', stance: 'con', personality: '温和', domain: '亲密关系与沟通' },
@@ -117,7 +117,7 @@
       const sc = SCENES[k];
       const chip = el('button', 'scene-chip' + (state.scene === k ? ' active' : ''));
       chip.dataset.scene = k;
-      chip.innerHTML = '<span class="sc-icon">' + sc.icon + '</span>' + sc.name;
+      chip.innerHTML = '<span class="sc-icon has-ic ic-' + sc.icon + '"></span>' + sc.name;
       chip.addEventListener('click', () => applyScene(k));
       wrap.appendChild(chip);
     });
@@ -233,7 +233,7 @@
       const stanceHtml = state.discussionMode === 'scripted'
         ? '<select data-f="stance" class="rc-stance-sel">' +
             opt('pro', '支持', r.stance) + opt('con', '反对', r.stance) + opt('neutral', '中立', r.stance) + '</select>'
-        : '<span class="rc-stance-tag">✨ 自由</span>';
+        : '<span class="rc-stance-tag"><span class="dot"></span>自由</span>';
       card.innerHTML =
         /* 第一行：头像 + 名字 + 头衔 + 态度 + 删除 */
         '<div class="rc-row rc-row-main">' +
@@ -305,8 +305,8 @@
       const hintEl = document.querySelector('.panel-body .hint:last-of-type');
       if (hintEl) {
         hintEl.textContent = isReal
-          ? '当前为「真实模型」模式，将调用右侧配置的模型 API。点左上角 ⚙ 可管理模型提供商与密钥。'
-          : '当前为「模拟回复」模式，无需任何 API key 即可运行。点左上角 ⚙ 可配置真实模型接入（OpenAI / Anthropic / Ollama 与任意自定义模型均在此添加）。';
+          ? '当前为「真实模型」模式，将调用右侧配置的模型 API。点左上角「设置」可管理模型提供商与密钥。'
+          : '当前为「模拟回复」模式，无需任何 API key 即可运行。点左上角「设置」可配置真实模型接入（OpenAI / Anthropic / Ollama 与任意自定义模型均在此添加）。';
       }
     }
     function setLocked(locked) {
@@ -349,8 +349,8 @@
     const card = el('div', 'settings-card');
 
     const bar = el('div', 'set-bar');
-    bar.appendChild(el('div', 'set-title', '⚙ 模型接入设置'));
-    const close = el('button', 'btn btn-sm btn-ghost', '✕ 关闭');
+    bar.appendChild(el('div', 'set-title has-ic ic-settings', '模型接入设置'));
+    const close = el('button', 'btn btn-sm btn-ghost has-ic ic-x', '关闭');
     close.addEventListener('click', closeSettings);
     bar.appendChild(close);
     card.appendChild(bar);
@@ -369,7 +369,7 @@
     // 一键添加常见厂商；添加后与普通自定义项一致，可改名/删
     const presets = el('div', 'prov-presets');
     ['openai', 'anthropic', 'ollama', 'zhipu', 'deepseek', 'qwen', 'kimi'].forEach(function (k) {
-      const b = el('button', 'btn btn-xs btn-ghost prov-preset', '➕ ' + PRESETS[k].name);
+      const b = el('button', 'btn btn-xs btn-ghost prov-preset has-ic ic-plus', PRESETS[k].name);
       b.addEventListener('click', () => addPreset(k));
       presets.appendChild(b);
     });
@@ -377,7 +377,7 @@
 
     // 添加自定义模型（任意 OpenAI / Anthropic 兼容端点）
     const addWrap = el('div', 'prov-add');
-    const addBtn = el('button', 'btn btn-add', '➕ 添加自定义模型');
+    const addBtn = el('button', 'btn btn-add has-ic ic-plus', '添加自定义模型');
     addBtn.addEventListener('click', () => { const f = $('#npForm'); if (f) f.classList.toggle('hidden'); });
     addWrap.appendChild(addBtn);
     const form = el('div', 'prov-add-form hidden');
@@ -396,7 +396,7 @@
         '<input id="npTemp" type="number" step="0.05" min="0" max="2" placeholder="0.85"></div>' +
       '<div class="field"><label>API Key（可选，部分服务不需要）</label>' +
         '<div style="display:flex;gap:6px;align-items:center"><input id="npKey" type="password" placeholder="sk-...">' +
-        '<button id="npReveal" type="button" class="btn btn-xs btn-ghost" title="显示/隐藏明文">👁</button></div></div>' +
+        '<button id="npReveal" type="button" class="btn btn-xs btn-ghost has-ic ic-eye" title="显示/隐藏明文"></button></div></div>' +
       '<div class="np-form-btns">' +
         '<button id="npCancel" class="btn btn-xs btn-ghost">取消</button>' +
         '<button id="npAdd" class="btn btn-xs btn-primary">添加</button>' +
@@ -416,7 +416,7 @@
     }
 
     card.appendChild(el('div', 'hint',
-      '密钥仅存于本机浏览器 localStorage，不写入代码。默认以掩码（•）显示，点击 👁 可临时查看明文。' +
+      '密钥仅存于本机浏览器 localStorage，不写入代码。默认以掩码（•）显示，点击「明文」可临时查看明文。' +
       '一键添加常见厂商（OpenAI / Anthropic / Ollama / 智谱 AI / DeepSeek / 通义千问 / Kimi）后，也可继续添加任意走 OpenAI 或 Anthropic 协议的自定义模型，并在角色/主持人的「绑定模型」中选用。' +
       '注意：智谱、DeepSeek、通义千问、Kimi 等国内模型均为「OpenAI 兼容协议」，不要选成 Anthropic 协议（否则会请求 /v1/messages 而 404）。' +
       '「温度」默认 0.85；部分模型（如 Kimi 的 kimi-k2）仅接受 1，可在对应厂商卡片中单独设置，否则会报 HTTP 400。' +
@@ -445,7 +445,7 @@
     nm.addEventListener('input', () => { p.name = nm.value; saveStore(); });
     head.appendChild(nm);
     head.appendChild(el('span', 'prov-tag', protoTag(p.protocol)));
-    const del = el('button', 'prov-del', '✕ 删除');
+    const del = el('button', 'prov-del has-ic ic-x', '删除');
     del.title = '删除该模型';
     del.addEventListener('click', () => deleteProvider(key));
     head.appendChild(del);
@@ -459,23 +459,23 @@
     ps.addEventListener('change', () => { p.protocol = ps.value; saveStore(); });
     wrap.appendChild(ps);
 
+    // 模型 + 温度：同一行
+    const modelRow = el('div', 'prov-model-row');
     const dm = el('input');
     dm.type = 'text';
     dm.id = 'setDm_' + key;
     dm.placeholder = '默认模型（可选）';
     dm.value = p.defaultModel || '';
     dm.addEventListener('input', () => { p.defaultModel = dm.value; saveStore(); });
-    wrap.appendChild(dm);
+    modelRow.appendChild(dm);
 
-    // 温度（可选；部分模型如 Kimi 仅接受特定值，例如 1）
     const temp = el('input');
     temp.type = 'number';
     temp.step = '0.05';
     temp.min = '0';
     temp.max = '2';
     temp.id = 'setTemp_' + key;
-    temp.placeholder = '温度(可选, 默认0.85)';
-    temp.className = 'prov-temp';
+    temp.placeholder = '温度';
     if (typeof p.temperature === 'number') temp.value = p.temperature;
     temp.addEventListener('input', () => {
       const v = parseFloat(temp.value);
@@ -483,7 +483,8 @@
       else p.temperature = v;
       saveStore();
     });
-    wrap.appendChild(temp);
+    modelRow.appendChild(temp);
+    wrap.appendChild(modelRow);
 
     const needsKey = p.protocol !== 'ollama';
     if (needsKey) {
@@ -493,7 +494,7 @@
       input.placeholder = 'API Key（sk-...）';
       input.id = 'setKey_' + key;
       if (p.apiKey) input.value = p.apiKey; // 仅在 DOM 中以密码框掩码显示，不暴露明文
-      const reveal = el('button', 'btn btn-xs btn-ghost', '👁');
+      const reveal = el('button', 'btn btn-xs btn-ghost has-ic ic-eye', '');
       reveal.title = '显示 / 隐藏明文';
       reveal.addEventListener('click', () => {
         input.type = input.type === 'password' ? 'text' : 'password';
@@ -595,47 +596,83 @@
   }
 
   function startMeeting() {
-    const cfg = collectConfig();
-    if (!cfg.topic) { alert('请先填写议题'); return; }
-    if (cfg.roles.length < 2) { alert('至少需要 2 位角色'); return; }
-    _ended = false;   // 新会议，重置结束门控
+    try {
+      const cfg = collectConfig();
+      if (!cfg.topic) { alert('请先填写议题'); return; }
+      if (cfg.roles.length < 2) { alert('至少需要 2 位角色'); return; }
+      _ended = false;   // 新会议，重置结束门控
+      clearTypewriters();  // 清除上一轮残留的打字机定时器，防止干扰新会议渲染
 
-    $('#startBtn').disabled = true;
-    const eb = $('#endBtn'); if (eb) eb.disabled = false;
-    $('#emptyState').classList.add('hidden');
-    $('#chat').innerHTML = '';
-    $('#composer').classList.remove('hidden');
-    running = true;
-    if (bindRunMode._lock) bindRunMode._lock(true);
-    updateHead(cfg.topic, cfg.mode, '开场');
+      $('#startBtn').disabled = true;
+      const eb = $('#endBtn'); if (eb) eb.disabled = false;
+      // #emptyState 是 #chat 的子元素，上一轮 startMeeting 的 innerHTML='' 已将其删除；
+      // 用 null 守卫避免第二次启动时 Cannot read properties of null
+      const es = $('#emptyState'); if (es) es.classList.add('hidden');
+      $('#chat').innerHTML = '';
+      const cp = $('#composer'); if (cp) cp.classList.remove('hidden');
+      running = true;
+      if (bindRunMode._lock) bindRunMode._lock(true);
+      updateHead(cfg.topic, cfg.mode, '开场');
 
-    // 真实模式下从 file:// 直接调用外部 API 常被浏览器 CORS 静默拦截（请求挂起）
-    // （桌面端运行在 app:// 协议下，不会进入此分支）
-    if (!isElectron() && state.realMode && !state.proxyEnabled &&
-        typeof location !== 'undefined' && location.protocol === 'file:' &&
-        cfg.roles.some(r => r.provider && r.provider !== 'mock')) {
-      setStatus('⚠ 当前以 file:// 打开且未启用代理：浏览器可能拦截对外部模型的请求。' +
-        '建议用本地代理（运行 proxy.js）或改用 http 服务打开，否则将自动回退模拟。');
+      // 真实模式下从 file:// 直接调用外部 API 常被浏览器 CORS 静默拦截（请求挂起）
+      // （桌面端运行在 app:// 协议下，不会进入此分支）
+      if (!isElectron() && state.realMode && !state.proxyEnabled &&
+          typeof location !== 'undefined' && location.protocol === 'file:' &&
+          cfg.roles.some(r => r.provider && r.provider !== 'mock')) {
+        setStatus('⚠ 当前以 file:// 打开且未启用代理：浏览器可能拦截对外部模型的请求。' +
+          '建议用本地代理（运行 proxy.js）或改用 http 服务打开，否则将自动回退模拟。');
+      }
+
+      const router = new ModelRouter(state.providers, state.realMode ? 'real' : 'mock', {
+        proxyEnabled: state.proxyEnabled, proxyBase: 'http://localhost:8787',
+        onStatus: setStatus, timeout: 20000, discussionMode: state.discussionMode
+      });
+      if (engine) {
+        engine.abort();
+        engine.onEvent = function () {};   // 阻止旧引擎异步残留事件（{} kind:'done'）误触发 onDone
+      }
+      engine = new MeetingEngine({
+        topic: cfg.topic, roles: cfg.roles, host: cfg.host, mode: cfg.mode,
+        discussionMode: state.discussionMode,
+        generator: router, delay: SPEED_PRESETS[_currentSpeed].delay, onEvent: onEvent
+      });
+      branches = [];
+      activeBranch = addBranch(engine, '主线', null, null, null);
+      renderBranchPanel();
+      // 启用暂停按钮，重置文字
+      const pb = $('#pauseBtn'); if (pb) { pb.disabled = false; pb.textContent = '暂停'; }
+      setStatus(state.realMode ? '⏳ 会议开始（真实模式）…' : '会议开始（模拟模式）…');
+      startWatchdog();  // 启动看门狗：若 15 秒内无事件则自动恢复 UI
+      engine.start().then(
+        function () {
+          // 会议正常完成（onDone 已通过 done 事件调用）
+          clearWatchdog();
+        },
+        function (e) {
+          // 引擎出错：恢复 UI 并显示错误（不再被 clearStatus 覆盖）
+          clearWatchdog();
+          console.error('[Roundtable] Meeting error:', e);
+          _ended = true;
+          running = false;
+          $('#startBtn').disabled = false;
+          $('#startBtn').textContent = '重新开始';
+          const eb2 = $('#endBtn'); if (eb2) eb2.disabled = true;
+          if (bindRunMode._lock) bindRunMode._lock(false);
+          setStatus('❌ 会议运行出错：' + (e && e.message ? e.message : e));
+        }
+      );
+    } catch (e) {
+      // startMeeting 本身抛异常（如 DOM 操作失败）：恢复 UI
+      console.error('[Roundtable] startMeeting error:', e);
+      clearWatchdog();
+      _ended = true;
+      running = false;
+      $('#startBtn').disabled = false;
+      $('#startBtn').textContent = '重新开始';
+      const eb3 = $('#endBtn'); if (eb3) eb3.disabled = true;
+      if (bindRunMode._lock) bindRunMode._lock(false);
+      setStatus('❌ 启动会议失败：' + (e && e.message ? e.message : e));
     }
-
-    const router = new ModelRouter(state.providers, state.realMode ? 'real' : 'mock', {
-      proxyEnabled: state.proxyEnabled, proxyBase: 'http://localhost:8787',
-      onStatus: setStatus, timeout: 20000, discussionMode: state.discussionMode
-    });
-    if (engine) engine.abort();   // 重启前中止上一次可能仍在进行的引擎循环，避免双重循环/卡死
-    engine = new MeetingEngine({
-      topic: cfg.topic, roles: cfg.roles, host: cfg.host, mode: cfg.mode,
-      discussionMode: state.discussionMode,
-      generator: router, delay: 750, onEvent: onEvent
-    });
-    branches = [];
-    activeBranch = addBranch(engine, '主线', null, null, null);
-    renderBranchPanel();
-    setStatus(state.realMode ? '⏳ 会议开始（真实模式）…' : '会议开始（模拟模式）…');
-    engine.start().catch(function (e) {
-      setStatus('❌ 会议运行出错：' + (e && e.message ? e.message : e));
-      console.error(e);
-    }).then(function () { clearStatus(); });
   }
 
   function setStatus(msg) {
@@ -659,13 +696,33 @@
   }
 
   let _ended = false;   // 会议已结束（手动结束或自然走完），拦截引擎后续漏网事件
+  let _watchdog = null; // 看门狗：引擎启动后若迟迟不产生事件，超时恢复 UI
 
-  function onEvent(ev) {
+  function startWatchdog() {
+    clearWatchdog();
+    _watchdog = setTimeout(function () {
+      console.error('[Roundtable] Watchdog: 15 秒内未收到任何引擎事件，强制恢复 UI');
+      _watchdog = null;
+      _ended = true;
+      running = false;
+      $('#startBtn').disabled = false;
+      $('#startBtn').textContent = '重新开始';
+      const eb = $('#endBtn'); if (eb) eb.disabled = true;
+      if (bindRunMode._lock) bindRunMode._lock(false);
+      setStatus('⚠ 会议启动超时（未收到事件），已自动恢复。请重试。');
+    }, 15000);
+  }
+  function clearWatchdog() {
+    if (_watchdog) { clearTimeout(_watchdog); _watchdog = null; }
+  }
+
+  async function onEvent(ev) {
     if (!ev || !ev.kind) return;
     if (_ended) return;   // 已结束后丢弃所有引擎后续事件，防止重复消息
+    clearWatchdog();      // 收到事件，取消看门狗
     if (ev.kind === 'done') { _ended = true; onDone(); return; }
-    if (ev.kind === 'host') { renderHost(ev); maybeRefreshPanel(); return; }
-    if (ev.kind === 'speech') { renderSpeech(ev); maybeRefreshPanel(); return; }
+    if (ev.kind === 'host') { await renderHost(ev); maybeRefreshPanel(); return; }
+    if (ev.kind === 'speech') { await renderSpeech(ev); maybeRefreshPanel(); return; }
   }
 
   function renderHost(ev, instant) {
@@ -682,7 +739,7 @@
     }
     m.appendChild(inner);
     appendMsg(m);
-    typewriter(textEl, ev.text, 12, instant);
+    return typewriter(textEl, ev.text, _typeSpeed.host, instant);
   }
 
   function renderSpeech(ev, instant) {
@@ -715,7 +772,7 @@
     if (ev.fallback) body.appendChild(el('div', 'fallback', '⚠ ' + esc(ev.fallback)));
     m.appendChild(body);
     appendMsg(m);
-    typewriter(textEl, ev.text, 18, instant);
+    return typewriter(textEl, ev.text, _typeSpeed.speech, instant);
   }
 
   // 把一整段 transcript 一次性（无打字机）渲染——用于分支回看/切换
@@ -733,26 +790,49 @@
     chat.scrollTop = chat.scrollHeight;
   }
 
+  // —— 打字机定时器追踪 ——
+  // 上一轮会议的 setInterval 如果没清理完，会持续操作已被清空的 DOM 节点，
+  // 可能干扰新一轮会议的渲染。统一追踪并在重置时清除。
+  // typewriter 返回 Promise，引擎 await 它即可实现"等打字机渲染完再继续下一条"。
+  let _twTimers = [];
+  let _typeSpeed = { host: 12, speech: 18 };  // 打字速度（ms/字符），可被速度选择器覆盖
+  function clearTypewriters() {
+    _twTimers.forEach(function (t) { clearInterval(t); });
+    _twTimers = [];
+  }
   function typewriter(node, text, speed, instant) {
-    if (instant) { node.textContent = text; return; }
-    node.textContent = '';
-    const cursor = el('span', 'cursor');
-    node.appendChild(cursor);
-    let i = 0;
-    const t = setInterval(() => {
-      if (i >= text.length) { cursor.remove(); clearInterval(t); return; }
-      cursor.insertAdjacentText('beforebegin', text[i]);
-      i++;
-      $('#chat').scrollTop = $('#chat').scrollHeight;
-    }, speed);
+    if (instant) { node.textContent = text; return Promise.resolve(); }
+    return new Promise(function (resolve) {
+      node.textContent = '';
+      const cursor = el('span', 'cursor');
+      node.appendChild(cursor);
+      let i = 0;
+      const t = setInterval(() => {
+        if (i >= text.length) {
+          cursor.remove(); clearInterval(t);
+          _twTimers = _twTimers.filter(function (x) { return x !== t; });
+          resolve();
+          return;
+        }
+        cursor.insertAdjacentText('beforebegin', text[i]);
+        i++;
+        const chat = $('#chat');
+        if (chat) chat.scrollTop = chat.scrollHeight;
+      }, speed);
+      _twTimers.push(t);
+    });
   }
 
   function onDone() {
+    clearWatchdog();
     running = false;
     if (activeBranch) activeBranch.done = true;
     $('#startBtn').disabled = false;
     $('#startBtn').textContent = '重新开始';
     const eb = $('#endBtn'); if (eb) eb.disabled = true;
+    const pb = $('#pauseBtn'); if (pb) { pb.disabled = true; pb.textContent = '暂停'; }
+    // 会议结束后隐藏导演指令输入框（否则用户会看到按钮但点击无效）
+    const cp = $('#composer'); if (cp) cp.classList.add('hidden');
     updateHead(state.topic, activeBranch ? activeBranch.engine.mode : state.mode, '已结束');
     maybeRefreshPanel();
     clearStatus();
@@ -768,9 +848,19 @@
   function sendDirector() {
     const inp = $('#directorInput');
     const text = inp.value.trim();
-    if (!text || !engine || !running) return;
+    if (!text) return;   // 空输入不处理
+    if (!engine || !running) {
+      setStatus('⚠ 会议未在进行中，无法发送导演指令');
+      setTimeout(clearStatus, 2500);
+      return;
+    }
     engine.director(text, extractTarget(text));
     inp.value = '';
+    // 给用户即时反馈，确认指令已加入队列（辩论阶段下一轮生效）
+    const target = extractTarget(text);
+    setStatus('✅ 导演指令已加入队列' + (target ? '（将围绕：' + target + '）' : '') +
+      '，将在下一轮辩论中生效');
+    setTimeout(clearStatus, 3000);
   }
   function extractTarget(text) {
     for (const r of state.roles) if (r.name && text.indexOf(r.name) >= 0) return r.name;
@@ -816,28 +906,40 @@
   }
 
   function resetMeeting() {
-    if (engine) engine.abort();
+    clearTypewriters();
+    clearWatchdog();
+    if (engine) { engine.abort(); engine.onEvent = function () {}; }
     running = false; engine = null; _ended = false;
     branches = []; activeBranch = null; pendingSnap = null;
-    $('#chat').innerHTML = '';
-    $('#emptyState').classList.remove('hidden');
-    $('#composer').classList.add('hidden');
-    $('#branchPanel').classList.add('hidden');
+    // 重置时重建 #emptyState（它在首次 startMeeting 的 innerHTML='' 中被销毁了）
+    $('#chat').innerHTML = '<div id="emptyState" class="empty">' +
+      '<div class="big has-ic ic-message"></div>' +
+      '<h2>一场虚拟圆桌，正在等待开场</h2>' +
+      '<p>左侧配置议题、主持人与多位持不同立场的角色，选择讨论模式，<br/>' +
+      '点击「开始会议」，即可观看大模型（模拟）上演一场有来有回的讨论。</p></div>';
+    const cp = $('#composer'); if (cp) cp.classList.add('hidden');
+    const bp = $('#branchPanel'); if (bp) bp.classList.add('hidden');
     $('#startBtn').disabled = false;
-    $('#startBtn').textContent = '▶ 开始会议';
+    $('#startBtn').textContent = '开始会议';
     updateHead(state.topic, state.mode, '空闲');
     if (bindRunMode._lock) bindRunMode._lock(false);
     const eb = $('#endBtn'); if (eb) eb.disabled = true;
+    const pb = $('#pauseBtn'); if (pb) { pb.disabled = true; pb.textContent = '暂停'; }
   }
 
   // 手动结束当前会议：中止引擎循环，补一段阶段性总结，转入"已结束"状态
   function endMeeting() {
     if (!engine || !running) return;
-    _ended = true;          // 先关门，防止引擎后续漏网事件
+    clearTypewriters();
     engine.abort();
-    // 输出阶段性总结，让手动收尾也有意义（不强行制造"共识"措辞，仅作收尾）
+    // 禁用旧引擎的 onEvent，防止其异步 start() 残留的 {kind:'done'} 触发 onDone()
+    // （若此事件在"重新开始"后抵达，会把新会议误判为结束，导致界面卡死）
+    engine.onEvent = function () {};
+    _ended = true;
+    // 输出阶段性总结（不走 onEvent 门控，直接渲染）
     const sum = engine.buildSummary();
-    onEvent(engine.hostMsg('（会议已手动结束，以下为阶段性总结）\n\n' + sum, 'summary'));
+    const msg = engine.hostMsg('（会议已手动结束，以下为阶段性总结）\n\n' + sum, 'summary');
+    renderHost({ name: msg.name, model: msg.model, text: msg.text, director: msg.director }, true);
     onDone();
   }
 
@@ -851,7 +953,7 @@
     const panel = $('#branchPanel');
     if (!panel) return;
     panel.innerHTML = '';
-    panel.appendChild(el('div', 'bp-head', '🌿 分支时间线'));
+    panel.appendChild(el('div', 'bp-head has-ic ic-branch', '分支时间线'));
 
     const eng = activeBranch ? activeBranch.engine : null;
     const snaps = (eng && eng.snapshots) || [];
@@ -864,7 +966,7 @@
     forkable.forEach(s => {
       const row = el('div', 'bp-snap');
       row.appendChild(el('span', 'bp-label', s.label));
-      const btn = el('button', 'btn btn-xs btn-primary', '↪ 分支');
+      const btn = el('button', 'btn btn-xs btn-primary', '分支');
       btn.addEventListener('click', () => showForkForm(s));
       row.appendChild(btn);
       panel.appendChild(row);
@@ -924,21 +1026,35 @@
     const b = addBranch(forked, label, activeBranch ? activeBranch.id : null, snap.id, directorText || null);
     activeBranch = b; engine = forked;
     renderBranchPanel();
+    clearTypewriters();
     $('#chat').innerHTML = '';
     renderTranscriptInstant(forked.transcript);
     running = true;
+    _ended = false;
     $('#startBtn').disabled = true;
-    forked.start();
+    startWatchdog();
+    forked.start().then(function () {
+      clearWatchdog();
+    }, function (e) {
+      clearWatchdog();
+      console.error('[Roundtable] Fork error:', e);
+      _ended = true; running = false;
+      $('#startBtn').disabled = false;
+      $('#startBtn').textContent = '重新开始';
+      setStatus('❌ 分支运行出错：' + (e && e.message ? e.message : e));
+    });
   }
 
   function switchBranch(b) {
+    clearTypewriters();
     activeBranch = b; engine = b.engine;
     renderBranchPanel();
     $('#chat').innerHTML = '';
     renderTranscriptInstant(b.engine.transcript);
     running = !b.engine.done;
+    _ended = b.engine.done;
     $('#startBtn').disabled = running;
-    $('#startBtn').textContent = b.engine.done ? '重新开始' : '▶ 开始会议';
+    $('#startBtn').textContent = b.engine.done ? '重新开始' : '开始会议';
     const ph = b.engine.phase === 'done' ? '已结束' : (PHASE_LABEL[b.engine.phase] || b.engine.phase);
     updateHead(state.topic, b.engine.mode, ph);
   }
@@ -953,7 +1069,7 @@
   function openCompare() {
     if (!Compare) { alert('对比模块未加载'); return; }
     if (branches.length < 2) {
-      alert('至少生成 2 条分支才能对比。先在 🌿 分支面板中从某个节点生成新分支。');
+      alert('至少生成 2 条分支才能对比。先在「分支」面板中从某个节点生成新分支。');
       return;
     }
     compareSel = new Set(branches.map(b => b.id));
@@ -971,8 +1087,8 @@
 
     // 顶栏
     const bar = el('div', 'cmp-bar');
-    bar.appendChild(el('div', 'cmp-title', '🔬 分支对比 · 观点碰撞图'));
-    const close = el('button', 'btn btn-sm btn-ghost', '✕ 关闭');
+    bar.appendChild(el('div', 'cmp-title has-ic ic-scale', '分支对比 · 观点碰撞图'));
+    const close = el('button', 'btn btn-sm btn-ghost has-ic ic-x', '关闭');
     close.addEventListener('click', closeCompare);
     bar.appendChild(close);
     card.appendChild(bar);
@@ -1061,6 +1177,42 @@
     card.appendChild(table);
   }
 
+  // 速度档位：delay=引擎消息间隔, host/speech=打字机 ms/字符
+  const SPEED_PRESETS = {
+    slow:   { delay: 1500, host: 16, speech: 24, label: '慢速' },
+    normal: { delay: 750,  host: 12, speech: 18, label: '正常' },
+    fast:   { delay: 300,  host: 8,  speech: 10, label: '快速' }
+  };
+  let _currentSpeed = 'normal';
+
+  function bindSpeedControl() {
+    const sel = $('#speedSel');
+    if (!sel) return;
+    sel.addEventListener('change', function () {
+      _currentSpeed = sel.value;
+      const p = SPEED_PRESETS[_currentSpeed];
+      _typeSpeed.host = p.host;
+      _typeSpeed.speech = p.speech;
+      // 若引擎正在运行，动态调整 delay（下一轮 sleep 生效）
+      if (engine) engine.delay = p.delay;
+    });
+  }
+
+  function togglePause() {
+    if (!engine || !running) return;
+    const btn = $('#pauseBtn');
+    if (engine.paused) {
+      engine.resume();
+      btn.textContent = '暂停';
+      setStatus('会议已继续');
+      setTimeout(clearStatus, 1500);
+    } else {
+      engine.pause();
+      btn.textContent = '继续';
+      setStatus('会议已暂停，可输入导演指令后点「继续」');
+    }
+  }
+
   function init() {
     loadStore();
     renderScenes();
@@ -1068,6 +1220,7 @@
     bindStanceMode();
     bindRunMode();
     bindHostInputs();
+    bindSpeedControl();
     $('#settingsBtn').addEventListener('click', openSettings);
     $('#settingsModal').addEventListener('click', e => {
       if (e.target && e.target.id === 'settingsModal') closeSettings();
@@ -1075,11 +1228,15 @@
     $('#addRoleBtn').addEventListener('click', addRole);
     $('#startBtn').addEventListener('click', () => {
       if (running) return;
-      if (engine && engine.transcript.length && !confirm('当前会议未完成，确定重新开始？')) return;
+      // 会议已自然结束（engine.done）→ 直接重新开始，不弹确认
+      if (engine && engine.transcript.length) {
+        if (!engine.done && !confirm('当前会议未完成，确定重新开始？')) return;
+      }
       startMeeting();
     });
     $('#resetBtn').addEventListener('click', resetMeeting);
     $('#endBtn').addEventListener('click', endMeeting);
+    $('#pauseBtn').addEventListener('click', togglePause);
     $('#exportBtn').addEventListener('click', exportMarkdown);
     $('#compareBtn').addEventListener('click', openCompare);
     $('#compareOverlay').addEventListener('click', e => {
@@ -1087,8 +1244,21 @@
     });
     $('#branchBtn').addEventListener('click', () => {
       const p = $('#branchPanel');
-      if (p.classList.contains('hidden')) { renderBranchPanel(); p.classList.remove('hidden'); }
-      else { p.classList.add('hidden'); pendingSnap = null; }
+      if (p.classList.contains('hidden')) {
+        renderBranchPanel();
+        p.classList.remove('hidden');
+        // 动态定位：面板紧贴按钮下方
+        const btn = $('#branchBtn');
+        if (btn) {
+          const r = btn.getBoundingClientRect();
+          // .stage 有 position:relative，面板相对于它定位
+          const stage = btn.closest('.stage');
+          const sr = stage ? stage.getBoundingClientRect() : { top: 0, left: 0 };
+          p.style.top = (r.bottom - sr.top + 6) + 'px';
+          p.style.right = 'auto';
+          p.style.left = (r.left - sr.left) + 'px';
+        }
+      } else { p.classList.add('hidden'); pendingSnap = null; }
     });
     $('#directorSend').addEventListener('click', sendDirector);
     $('#directorInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendDirector(); });

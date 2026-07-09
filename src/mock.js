@@ -313,6 +313,10 @@
       const lastSpeaker = ctx.lastSpeaker;
       const bank = BANKS[domainBank(role.domain)];
       const hint = topicHint(topic, role);
+      // 导演指令驱动：角色针对导演指令做定向补充/回应（而非按正常辩论流程走）
+      if (ctx.directorInstruction) {
+        return this.directedResponse(role, ctx.directorInstruction, topic, bank, hint);
+      }
       if (!lastSpeaker) return this.opening(role, topic);
 
       const lastLean = (lastSpeaker.freeLean || lastSpeaker.stance || 'neutral');
@@ -328,6 +332,39 @@
       } else {
         s = lastSpeaker.name + '说到了点子上，我顺着补一层：' + pick(bank.add) + '。';
       }
+      const f = flavor(role.personality);
+      if (f) s += ' ' + f;
+      return s;
+    }
+
+    // 导演指令下的定向回复：角色"收到指令"后围绕要求展开补充
+    directedResponse(role, instruction, topic, bank, hint) {
+      const lean = this._lean(role);
+      // 根据角色立场选择不同语气方向
+      let core;
+      if (instruction.indexOf('补充') >= 0 || instruction.indexOf('再说说') >= 0 || instruction.indexOf('再次') >= 0) {
+        // 补充观点：用 add 库
+        core = pick(bank.add || bank.pro || ['我补充一点：从我的视角来看，这件事需要更细致的执行方案。']);
+      } else if (instruction.indexOf('反对') >= 0 || instruction.indexOf('质疑') >= 0 || instruction.indexOf('反驳') >= 0) {
+        // 质疑/反驳：用 counter 库
+        core = pick(bank.counter || bank.con);
+      } else if (instruction.indexOf('支持') >= 0 || instruction.indexOf('赞同') >= 0) {
+        // 支持：用 pro 库
+        core = pick(bank.pro || bank.add);
+      } else {
+        // 通用导演指令：根据立场选库
+        if (lean === 'pro') core = pick(bank.add || bank.pro);
+        else if (lean === 'con') core = pick(bank.con || bank.counter);
+        else core = pick(bank.add || ['关键在于执行细节和风险控制', '需要更多数据来支撑决策', '可以分阶段推进，边验证边调整']);
+      }
+
+      let s = '收到导演的指示，我就刚才的话题再补充一下我的看法。';
+      s += '作为' + (role.title || '参与者') + '，';
+      if (lean === 'pro') s += '我认为这个方向值得推进——' + core + '。';
+      else if (lean === 'con') s += '我还是有些顾虑——' + core + '。';
+      else s += '我想说——' + core + '。';
+
+      if (hint) s += '另外，' + hint;
       const f = flavor(role.personality);
       if (f) s += ' ' + f;
       return s;

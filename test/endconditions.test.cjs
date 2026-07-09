@@ -11,9 +11,11 @@ function mkRoles(stances) {
   const names = ['王刚', '李娜', '老周', '小赵'];
   const titles = ['CTO', '业务总监', '安全顾问', '一线开发'];
   const avs = ['🛠️', '🚀', '🛡️', '💡'];
+  // 使用不同领域关键词，映射到不同文本库，避免 mock 重复文本触发 refocus 影响轮数断言
+  const domains = ['技术架构', '业务增长', '安全合规', '职业发展'];
   return stances.map((s, i) => ({
     id: 'r' + i, name: names[i], title: titles[i], avatar: avs[i],
-    stance: s, personality: '理性', domain: '技术' + i, model: 'mock'
+    stance: s, personality: '理性', domain: domains[i], model: 'mock'
   }));
 }
 
@@ -46,9 +48,11 @@ async function runToDone(roles, mode) {
     const { eng, evs } = await runToDone(mkRoles(['pro', 'con', 'neutral', 'pro']), 'debate');
     const debateSpeeches = evs.filter(e => e.kind === 'speech' && e.phase === 'debate').length;
     const early = evs.some(e => e.kind === 'host' && /提前进入总结/.test(e.text));
+    // 用快照数断言轮数（每轮末都会 snapshot，无论该轮是发言还是跑题拉回）
+    const debateRounds = eng.snapshots.filter(s => s.label && s.label.indexOf('轮辩论后') >= 0).length;
     if (early) throw new Error('混合立场不应触发「提前进入总结」');
-    if (debateSpeeches !== 3) throw new Error('混合立场应跑满 3 轮辩论，实际=' + debateSpeeches);
-    console.log('[OK] 混合立场不提前收尾：跑满 3 轮辩论');
+    if (debateRounds !== 3) throw new Error('混合立场应跑满 3 轮辩论（快照数），实际=' + debateRounds);
+    console.log('[OK] 混合立场不提前收尾：跑满 3 轮辩论（发言 ' + debateSpeeches + ' 次，跑题拉回 ' + (3 - debateSpeeches) + ' 次）');
   }
 
   // 3) abort 不触发 done 事件

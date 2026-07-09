@@ -108,6 +108,22 @@
       this.delay = (opts.delay != null) ? opts.delay : 650;
       this._socraticTarget = null;
       this.aborted = false;
+      this.paused = false;
+      this._resumeResolve = null;
+    }
+
+    pause() { this.paused = true; }
+    resume() {
+      this.paused = false;
+      if (this._resumeResolve) { this._resumeResolve(); this._resumeResolve = null; }
+    }
+    async _waitIfPaused() {
+      if (this.paused) await new Promise(r => { this._resumeResolve = r; });
+    }
+    // 统一的 sleep：等待指定时间后，若被暂停则阻塞直到 resume
+    async _sleep(ms) {
+      await sleep(ms);
+      await this._waitIfPaused();
     }
 
     roleById(id) { return this.roles.find(r => r.id === id); }
@@ -145,8 +161,8 @@
 
       if (idx <= 0) {
         this.phase = 'opening';
-        this.onEvent(this.hostMsg(this.host.opening(this.topic, this.roles), 'opening'));
-        await sleep(this.delay);
+        await this.onEvent(this.hostMsg(this.host.opening(this.topic, this.roles), 'opening'));
+        await this._sleep(this.delay);
         if (this.aborted) return;
         this.snapshot('开场后', 'round1', 0);
       }
@@ -154,11 +170,12 @@
         this.phase = 'round1';
         for (const id of this.speakerOrder) {
           if (this.aborted) return;
+          await this._waitIfPaused();
           const role = this.roleById(id);
           const out = await this.generator.generate(role, { move: 'open', topic: this.topic });
-          this.onEvent(this.record(role, out.text, 'round1', out.fallback ? { fallback: out.fallback } : undefined));
+          await this.onEvent(this.record(role, out.text, 'round1', out.fallback ? { fallback: out.fallback } : undefined));
           this.lastSpeakerId = id;
-          await sleep(this.delay);
+          await this._sleep(this.delay);
         }
         this.snapshot('首轮陈述后', 'debate', 0);
       }
@@ -169,12 +186,12 @@
       if (idx <= 3) {
         this.phase = 'summary';
         const summary = this.buildSummary();
-        this.onEvent(this.hostMsg('最后，我做一下总结。\n\n' + summary, 'summary'));
+        await this.onEvent(this.hostMsg('最后，我做一下总结。\n\n' + summary, 'summary'));
         this.snapshot('结束后', null, 0);
       }
 
       this.phase = 'done'; this.done = true;
-      this.onEvent({ kind: 'done' });
+      await this.onEvent({ kind: 'done' });
     }
 
     async runDebate(startFrom) {
@@ -184,30 +201,56 @@
 
       for (let i = startFrom; i < rounds; i++) {
         if (this.aborted) return;
+        await this._waitIfPaused();
         // —— 导演指令优先消费 ——
         if (this.directorQueue.length) {
           const d = this.directorQueue.shift();
-          this.onEvent(this.hostMsg('[导演指令] ' + d.text, 'debate', { director: true }));
-          if (d.targetId) lastSpeakerId = d.targetId;
-          await sleep(this.delay);
+          await this.onEvent(this.hostMsg('[导演指令] ' + d.text, 'debate', { director: true }));
+          await this._sleep(this.delay);
+          // 若指定了目标角色，主动邀请其针对导演指令发言（而非仅更新 lastSpeakerId 留给下轮随机调度）
+          if (d.targetId) {
+            const targetRole = this.roleById(d.targetId);
+            if (targetRole) {
+              // 主持人调度：邀请目标角色
+              await this.onEvent(this.hostMsg(
+                this.host.invite(targetRole, '收到导演指令，请' + targetRole.name + '就以上要求'),
+                'debate', { action: 'invite', speaker: targetRole.id }
+              ));
+              await this._sleep(this.delay * 0.6);
+              // 目标角色发言（以导演指令作为上下文）
+              const dout = await this.generator.generate(targetRole, {
+                move: 'debate', topic: this.topic,
+                directorInstruction: d.text,
+                target: this.roleById(lastSpeakerId), lastSpeaker: this.roleById(lastSpeakerId)
+              });
+              await this.onEvent(this.record(targetRole, dout.text, 'debate', {
+                replyTo: lastSpeakerId,
+                hostDecision: { action: 'invite', speaker: targetRole.id },
+                directorInstruction: d.text,
+                fallback: dout.fallback || undefined
+              }));
+              lastSpeakerId = targetRole.id;
+              await this._sleep(this.delay);
+            }
+          }
         } else if (this.mode === 'socratic') {
           // —— 苏格拉底式：主持人对单一目标连续追问 ——
           const t = this.roleById(this.socraticTarget());
-          this.onEvent(this.hostMsg(this.host.probing(t, i), 'debate', { probe: true,
+          await this.onEvent(this.hostMsg(this.host.probing(t, i), 'debate', { probe: true,
             action: 'probe', speaker: t.id }));
-          await sleep(this.delay);
+          await this._sleep(this.delay);
           const last = this.roleById(lastSpeakerId);
           const pout = await this.generator.generate(t, { move: 'probe', topic: this.topic,
             target: last, lastSpeaker: last });
-          this.onEvent(this.record(t, pout.text, 'debate', { replyTo: lastSpeakerId, fallback: pout.fallback || undefined }));
+          await this.onEvent(this.record(t, pout.text, 'debate', { replyTo: lastSpeakerId, fallback: pout.fallback || undefined }));
           lastSpeakerId = t.id;
-          await sleep(this.delay);
+          await this._sleep(this.delay);
         } else {
           // —— 多边辩论 / 头脑风暴 / 决策：主持人挑选下一个发言人 ——
           const sel = this.pickDebater(lastSpeakerId);
           if (sel.refocus) {
-            this.onEvent(this.hostMsg(sel.text, 'debate', { refocus: true, action: 'refocus' }));
-            await sleep(this.delay);
+            await this.onEvent(this.hostMsg(sel.text, 'debate', { refocus: true, action: 'refocus' }));
+            await this._sleep(this.delay);
           } else {
             const role = this.roleById(sel.speakerId);
             const target = this.roleById(lastSpeakerId);
@@ -217,20 +260,20 @@
             const text = out.text;
             // 重复 / 跑题检测（仅比较该角色在辩论环节内的前后发言）
             if (role.lastDebateText && overlap(text, role.lastDebateText) > 0.5) {
-              this.onEvent(this.hostMsg(this.host.refocus(this.topic), 'debate',
+              await this.onEvent(this.hostMsg(this.host.refocus(this.topic), 'debate',
                 { refocus: true, action: 'refocus' }));
-              await sleep(this.delay);
+              await this._sleep(this.delay);
             } else {
               // 主持人邀请（结构化决策透明展示）
-              this.onEvent(this.hostMsg(this.host.invite(role, sel.reason), 'debate',
+              await this.onEvent(this.hostMsg(this.host.invite(role, sel.reason), 'debate',
                 { action: 'invite', speaker: role.id }));
-              await sleep(this.delay * 0.6);
-              this.onEvent(this.record(role, text, 'debate', {
+              await this._sleep(this.delay * 0.6);
+              await this.onEvent(this.record(role, text, 'debate', {
                 replyTo: lastSpeakerId, hostDecision: { action: 'invite', speaker: role.id },
                 fallback: out.fallback || undefined
               }));
               lastSpeakerId = role.id;
-              await sleep(this.delay);
+              await this._sleep(this.delay);
             }
           }
         }
@@ -239,28 +282,29 @@
 
         // 达成共识则提前收尾：至少跑完 1 轮，避免一上来就结束
         if (i >= 1 && this.hasConsensus()) {
-          this.onEvent(this.hostMsg('各方立场已趋于一致，提前进入总结。', 'debate'));
-          await sleep(this.delay);
+          await this.onEvent(this.hostMsg('各方立场已趋于一致，提前进入总结。', 'debate'));
+          await this._sleep(this.delay);
           return; // 跳出辩论循环，start() 随后进入总结阶段
         }
       }
 
       // —— 模拟决策会：投票收敛 ——
       if (this.mode === 'decision') {
-        this.onEvent(this.hostMsg('进入决策环节，请各位亮明态度。', 'debate'));
-        await sleep(this.delay);
+        await this.onEvent(this.hostMsg('进入决策环节，请各位亮明态度。', 'debate'));
+        await this._sleep(this.delay);
         for (const id of this.speakerOrder) {
           if (this.aborted) return;
+          await this._waitIfPaused();
           const role = this.roleById(id);
           const out = await this.generator.generate(role, { move: 'vote', topic: this.topic });
           // 把角色亮明的最终立场写回（自由模式下尤为关键：态度由角色自行形成，不再来自预置）
           const declared = (out && out.stance) || (this.discussionMode === 'free' ? parseStance(out && out.text) : null);
           if (declared) role.stance = declared;
-          this.onEvent(this.record(role, out.text, 'debate', { vote: true, fallback: out.fallback || undefined }));
-          await sleep(this.delay);
+          await this.onEvent(this.record(role, out.text, 'debate', { vote: true, fallback: out.fallback || undefined }));
+          await this._sleep(this.delay);
         }
-        this.onEvent(this.hostMsg('计票结果：' + this.tally(), 'debate'));
-        await sleep(this.delay);
+        await this.onEvent(this.hostMsg('计票结果：' + this.tally(), 'debate'));
+        await this._sleep(this.delay);
         this.snapshot('投票后', 'summary', 0);
       }
     }

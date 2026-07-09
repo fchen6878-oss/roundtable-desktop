@@ -41,7 +41,20 @@ const sandbox = {
   document, console,
   window: null,
   alert() {}, confirm() { return true; },
-  setInterval() { return 0; }, clearInterval() {},
+  // typewriter 返回 Promise 依赖 setInterval，需真实触发回调（用 setTimeout(0) 模拟极速 setInterval）
+  _ivMap: {}, _ivNext: 1,
+  setInterval(fn, ms) {
+    const id = sandbox._ivNext++;
+    sandbox._ivMap[id] = true;
+    function loop() {
+      if (!sandbox._ivMap[id]) return;
+      try { fn(); } catch (e) {}
+      setTimeout(loop, 0);
+    }
+    setTimeout(loop, 0);
+    return id;
+  },
+  clearInterval(id) { delete sandbox._ivMap[id]; },
   setTimeout, clearTimeout,
   Blob: function () {}, URL: { createObjectURL() { return 'blob:x'; }, revokeObjectURL() {} }
 };
@@ -110,7 +123,7 @@ try {
   (function walk(n) {
     if (!n) return;
     if ((n._children || []).some(c => c.type === 'password')) hasKeyInput = true;
-    if ((n._children || []).some(c => c.innerHTML === '👁')) hasReveal = true;
+    if ((n._children || []).some(c => (c.className || '').indexOf('ic-eye') >= 0)) hasReveal = true;
     (n._children || []).forEach(walk);
   })(setModal);
   console.log('[OK] 设置浮层含密钥掩码框=' + hasKeyInput + '，含👁明文切换=' + hasReveal);
@@ -132,7 +145,7 @@ setTimeout(() => {
   try {
     registry['#branchBtn'].click();
     console.log('[OK] 打开分支面板（renderBranchPanel）未抛错');
-    const forkBtn = findByText(registry['#branchPanel'], '↪ 分支');
+    const forkBtn = findByText(registry['#branchPanel'], '分支');
     if (forkBtn) {
       forkBtn.click(); // showForkForm
       if (registry['#forkGo'].onclick) registry['#forkGo'].onclick(); // doFork
