@@ -1,7 +1,7 @@
 # 圆桌会议 / Roundtable Desktop
 
 <p align="center">
-  <img src="build/icon-dialogue.png" alt="Roundtable" width="96">
+  <img src="https://raw.githubusercontent.com/fchen6878-oss/roundtable-desktop/main/build/icon-dialogue.png" alt="Roundtable" width="96">
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 | 多角色辩论进行中 | 模型接入设置 |
 |:---:|:---:|
-| <img src="docs/screenshots/debate-main.png" alt="辩论主界面" width="560"> | <img src="docs/screenshots/model-settings.png" alt="模型设置" width="420"> |
+| <img src="https://raw.githubusercontent.com/fchen6878-oss/roundtable-desktop/main/docs/screenshots/debate-main.png" alt="辩论主界面" width="560"> | <img src="https://raw.githubusercontent.com/fchen6878-oss/roundtable-desktop/main/docs/screenshots/model-settings.png" alt="模型设置" width="420"> |
 
 ## 快速开始 / Quick Start
 
