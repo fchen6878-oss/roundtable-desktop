@@ -294,6 +294,16 @@ app.whenReady().then(() => {
   // 自动更新：仅打包后（分发版本）才检查，开发态跳过
   if (app.isPackaged) {
     autoUpdater.autoDownload = true;
+    // 发现新版本时直接提示用户（无需点击"检查更新"）
+    autoUpdater.once('update-available', (info) => {
+      const { Notification } = require('electron');
+      if (Notification.isSupported()) {
+        new Notification({
+          title: `圆桌会议 · 发现新版本 v${info.version}`,
+          body: '正在后台下载更新，完成后将提示您安装。'
+        }).show();
+      }
+    });
     autoUpdater.checkForUpdatesAndNotify().catch(() => {
       // 无网络 / 无发布配置时静默忽略
     });
