@@ -1,0 +1,58 @@
+{
+  "name": "roundtable",
+  "version": "1.0.0",
+  "description": "圆桌会议 - 大模型驱动的多角色可编排圆桌讨论桌面客户端",
+  "main": "electron/main.js",
+  "author": "Roundtable",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "set ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ && set ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ && electron-builder",
+    "dist:official": "electron-builder",
+    "publish": "electron-builder --publish=always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.roundtable.desktop",
+    "productName": "圆桌会议",
+    "copyright": "Copyright © 2026",
+    "files": [
+      "electron/**/*",
+      "index.html",
+      "styles.css",
+      "src/**/*",
+      "proxy.js"
+    ],
+    "icon": "build/icon.ico",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "圆桌会议"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "fchen6878-oss",
+        "repo": "roundtable-desktop",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

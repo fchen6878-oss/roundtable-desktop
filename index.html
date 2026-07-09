@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>圆桌会议 · Roundtable</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 左侧：会议筹备 -->
+    <aside class="panel">
+      <div class="panel-head">
+        <div class="logo">🗣️</div>
+        <div class="ph-title">
+          <h1>圆桌会议</h1>
+          <div class="sub">大模型驱动 · 多角色可编排</div>
+        </div>
+        <button id="settingsBtn" class="icon-btn" title="模型接入设置（真实模式）">⚙</button>
+      </div>
+      <div class="panel-body">
+        <div class="field">
+          <label>圆桌场景</label>
+          <div id="sceneChips" class="scene-chips"></div>
+        </div>
+        <div class="field">
+          <label>讨论议题</label>
+          <textarea id="topic" placeholder="输入一个值得多方讨论的议题…">我们团队是否应该立刻全面转向 AI 辅助编程？</textarea>
+        </div>
+
+        <div class="section-title">主持人配置</div>
+        <div class="row">
+          <div class="field" style="flex:1">
+            <label>名称</label>
+            <input id="hostName" type="text" value="张总助" />
+          </div>
+          <div class="field" style="flex:1">
+            <label>绑定模型</label>
+            <select id="hostProvider">
+              <option value="mock">模拟</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>控场风格</label>
+          <select id="hostBehavior">
+            <option value="balanced" selected>均衡（推荐）</option>
+            <option value="light">少干预 · 鼓励发散</option>
+            <option value="strict">强控场 · 严防跑题</option>
+          </select>
+        </div>
+
+        <div class="section-title">讨论模式</div>
+        <div class="field">
+          <select id="mode">
+            <option value="debate" selected>多边辩论（制造对立、交替驳论）</option>
+            <option value="brainstorm">头脑风暴（少打断、追求数量）</option>
+            <option value="socratic">苏格拉底诘问（连续追问单一角色）</option>
+            <option value="decision">模拟决策会（最终投票收敛）</option>
+          </select>
+          <div class="hint">不同模式会改变主持人的调度策略与收尾方式。</div>
+        </div>
+
+        <div class="section-title">角色态度</div>
+        <div class="field">
+          <div id="stanceMode" class="seg">
+            <button type="button" class="seg-btn active" data-mode="free">自由发挥（推荐）</button>
+            <button type="button" class="seg-btn" data-mode="scripted">制式辩论</button>
+          </div>
+          <div class="hint" id="stanceModeHint">角色自行形成立场，讨论更自然；切到「制式辩论」可手动指定每位角色支持 / 反对 / 中立。</div>
+        </div>
+
+        <div class="section-title">
+          <span>角色与模型绑定</span>
+        </div>
+        <div id="roleList"></div>
+        <button id="addRoleBtn" class="btn btn-add">＋ 添加角色</button>
+
+        <div class="field" style="margin-top:18px">
+          <button id="startBtn" class="btn btn-primary">▶ 开始会议</button>
+        </div>
+        <div class="hint">默认「模拟回复」模式，无需任何 API key 即可运行。点左上角 ⚙ 可单独配置真实模型接入：OpenAI / Anthropic / Ollama 与任意自定义模型均在此添加（密钥以掩码保存，可点击 👁 查看明文）。</div>
+      </div>
+    </aside>
+
+    <!-- 右侧：观看舞台 -->
+    <main class="stage">
+      <div class="stage-head">
+        <div id="topicPill" class="topic-pill">议题：…</div>
+        <div id="runModeSeg" class="seg run-mode-seg">
+          <button type="button" class="seg-btn active" data-rmode="mock">🎭 模拟模式</button>
+          <button type="button" class="seg-btn" data-rmode="real">🤖 真实模型</button>
+        </div>
+        <span id="modeBadge" class="mode-badge">—</span>
+        <span id="phaseBadge" class="phase-badge">阶段：空闲</span>
+        <div class="toolbar">
+          <button id="compareBtn" class="btn btn-sm btn-ghost">🔬 对比</button>
+          <button id="branchBtn" class="btn btn-sm btn-ghost">🌿 分支</button>
+          <button id="endBtn" class="btn btn-sm btn-ghost" disabled>⏹ 结束</button>
+          <button id="exportBtn" class="btn btn-sm">⬇ 导出纪要</button>
+          <button id="resetBtn" class="btn btn-sm btn-ghost">↺ 重置</button>
+        </div>
+      </div>
+
+      <div id="chat" class="chat">
+        <div id="emptyState" class="empty">
+          <div class="big">🗳️</div>
+          <h2>一场虚拟圆桌，正在等待开场</h2>
+          <p>左侧配置议题、主持人与多位持不同立场的角色，选择讨论模式，<br/>点击「开始会议」，即可观看大模型（模拟）上演一场有来有回的讨论。</p>
+        </div>
+      </div>
+
+      <div id="statusBar" class="status-bar hidden"></div>
+
+      <div id="composer" class="composer hidden">
+        <input id="directorInput" type="text" placeholder="导演指令：例如「请让王刚对刚才的数据安全观点做补充」" />
+        <button id="directorSend" class="btn btn-sm btn-primary">发送指令</button>
+      </div>
+
+      <div id="branchPanel" class="branch-panel hidden"></div>
+
+      <div id="compareOverlay" class="compare-overlay hidden"></div>
+      <div id="settingsModal" class="modal-overlay hidden"></div>
+    </main>
+  </div>
+
+  <script src="src/mock.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/clients.js"></script>
+  <script src="src/compare.js"></script>
+  <script src="src/ui.js"></script>
+</body>
+</html>
