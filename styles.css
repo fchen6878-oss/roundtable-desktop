@@ -120,7 +120,7 @@ main { flex: 1; display: flex; flex-direction: column; position: relative; }
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: var(--sp-3);
 }
-.head-info .logo-img {
+.panel-head .logo-img {
   width: 34px; height: 34px; border-radius: var(--r-md);
   object-fit: contain;
   flex: none;
