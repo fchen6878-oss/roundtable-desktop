@@ -55,7 +55,7 @@ npm run dist        # 打包安装包
 | 构建 | electron-builder (NSIS) |
 | 自动更新 | electron-updater (GitHub Releases) |
 | AI 对接 | OpenAI 兼容 API（支持 DeepSeek / 通义千问 / Kimi 等） |
-| 本地存储 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)（会议记录） |
+| 本地存储 | [sql.js](https://github.com/sql-js/sql.js)（SQLite WASM 版，零原生编译，会议记录） |
 | 密钥加密 | Electron [safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)（OS 级加密） |
 
 ## 数据存储 / Data Storage

@@ -290,24 +290,24 @@ if (!gotLock) {
   app.quit();
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerAppProtocol();
   const win = createWindow();
   buildMenu(win);
 
-  // 初始化本地存储层（SQLite + 密钥加密），并注册渲染层可用的 IPC 通道
-  db.initDb();
+  // 初始化本地存储层（SQLite WASM + 密钥加密），并注册渲染层可用的 IPC 通道
+  await db.initDb();
   ipcMain.handle('db:createMeeting', (e, data) => db.createMeeting(data));
-  ipcMain.handle('db:appendMessage', (e, id, msg) => { db.appendMessage(id, msg); return true; });
+  ipcMain.handle('db:appendMessage', async (e, id, msg) => { await db.appendMessage(id, msg); return true; });
   ipcMain.handle('db:listMeetings', () => db.listMeetings());
   ipcMain.handle('db:getMeeting', (e, id) => db.getMeeting(id));
-  ipcMain.handle('db:deleteMeeting', (e, id) => { db.deleteMeeting(id); return true; });
-  ipcMain.handle('db:updateMeeting', (e, id, patch) => { db.updateMeeting(id, patch); return true; });
+  ipcMain.handle('db:deleteMeeting', async (e, id) => { await db.deleteMeeting(id); return true; });
+  ipcMain.handle('db:updateMeeting', async (e, id, patch) => { await db.updateMeeting(id, patch); return true; });
   ipcMain.handle('key:listProviders', () => db.listProviders());
-  ipcMain.handle('key:setProvider', (e, key, cfg) => { db.setProvider(key, cfg); return true; });
-  ipcMain.handle('key:deleteProvider', (e, key) => { db.deleteProvider(key); return true; });
+  ipcMain.handle('key:setProvider', async (e, key, cfg) => { await db.setProvider(key, cfg); return true; });
+  ipcMain.handle('key:deleteProvider', async (e, key) => { await db.deleteProvider(key); return true; });
   ipcMain.handle('key:getDecryptedKey', (e, key) => db.getDecryptedKey(key));
-  ipcMain.handle('key:migrate', (e, legacy) => { db.migrate(legacy); return true; });
+  ipcMain.handle('key:migrate', async (e, legacy) => { await db.migrate(legacy); return true; });
 
   // 自动更新：仅打包后（分发版本）才检查，开发态跳过
   if (app.isPackaged) {

@@ -1,62 +1,126 @@
 'use strict';
 
-// 本地存储层：SQLite（better-sqlite3）持久化会议记录，并用 electron safeStorage 加密 API Key。
-// 数据库文件位于用户数据目录：<userData>/roundtable.db
+// 本地存储层：SQLite（sql.js WASM 版，纯 JS 零原生编译，无需 Visual Studio / 不挑 Node 版本）
+// 数据库持久化为文件：<userData>/roundtable.db
 const path = require('path');
+const fs = require('fs');
 const { app, safeStorage } = require('electron');
+const initSqlJs = require('sql.js');
 
-let Database = null;   // 延迟 require，避免语法检查/非 Electron 环境下加载失败
-let db = null;
+let SQL = null;       // sql.js 模块
+let db = null;        // 当前 Database 实例
+let initPromise = null;
+
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS meetings (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    topic TEXT,
+    scene TEXT,
+    mode TEXT,
+    director_notes TEXT,
+    created_at INTEGER,
+    updated_at INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_id TEXT,
+    seq INTEGER,
+    kind TEXT,
+    role_id TEXT,
+    name TEXT,
+    title TEXT,
+    avatar TEXT,
+    model TEXT,
+    stance TEXT,
+    phase TEXT,
+    text TEXT,
+    extra TEXT,
+    ts INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS providers (
+    key TEXT PRIMARY KEY,
+    name TEXT,
+    protocol TEXT,
+    base_url TEXT,
+    default_model TEXT,
+    api_key_enc TEXT,
+    temperature REAL,
+    updated_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_messages_meeting ON messages(meeting_id, seq);
+`;
 
 function userDbPath() {
   return path.join(app.getPath('userData'), 'roundtable.db');
 }
 
-function initDb() {
-  if (db) return db;
-  Database = require('better-sqlite3');
-  db = new Database(userDbPath());
-  db.pragma('journal_mode = WAL');
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS meetings (
-      id TEXT PRIMARY KEY,
-      title TEXT,
-      topic TEXT,
-      scene TEXT,
-      mode TEXT,
-      director_notes TEXT,
-      created_at INTEGER,
-      updated_at INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      meeting_id TEXT,
-      seq INTEGER,
-      kind TEXT,
-      role_id TEXT,
-      name TEXT,
-      title TEXT,
-      avatar TEXT,
-      model TEXT,
-      stance TEXT,
-      phase TEXT,
-      text TEXT,
-      extra TEXT,
-      ts INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS providers (
-      key TEXT PRIMARY KEY,
-      name TEXT,
-      protocol TEXT,
-      base_url TEXT,
-      default_model TEXT,
-      api_key_enc TEXT,
-      temperature REAL,
-      updated_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_messages_meeting ON messages(meeting_id, seq);
-  `);
-  return db;
+// 解析 sql-wasm.wasm 位置：开发态读 node_modules，打包后读 extraResources 或 asar 内同名文件
+function resolveWasm() {
+  const candidates = [];
+  if (app.isPackaged) {
+    candidates.push(path.join(process.resourcesPath, 'sql-wasm.wasm'));
+    candidates.push(path.join(process.resourcesPath, 'app', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'));
+  }
+  candidates.push(path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'));
+  for (let i = 0; i < candidates.length; i++) {
+    if (fs.existsSync(candidates[i])) return candidates[i];
+  }
+  return candidates[candidates.length - 1];
+}
+
+function persist() {
+  if (!db) return;
+  try {
+    const data = db.export();
+    fs.writeFileSync(userDbPath(), Buffer.from(data));
+  } catch (e) {
+    // 写入失败不致命，下次变更重试
+  }
+}
+
+// 执行写操作并落盘
+function run(sql, params) {
+  if (!db) throw new Error('db not initialized');
+  db.run(sql, params || []);
+  persist();
+}
+
+// 查询多行（参数可选）
+function all(sql, params) {
+  if (!db) throw new Error('db not initialized');
+  const stmt = db.prepare(sql);
+  const rows = [];
+  try {
+    if (params) stmt.bind(params);
+    while (stmt.step()) rows.push(stmt.getAsObject());
+  } finally {
+    stmt.free();
+  }
+  return rows;
+}
+
+function get(sql, params) {
+  const rows = all(sql, params);
+  return rows.length ? rows[0] : undefined;
+}
+
+async function initDb() {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    if (!SQL) SQL = await initSqlJs({ locateFile: () => resolveWasm() });
+    const f = userDbPath();
+    if (fs.existsSync(f)) {
+      const bytes = new Uint8Array(fs.readFileSync(f));
+      db = new SQL.Database(bytes);
+    } else {
+      db = new SQL.Database();
+      db.exec(SCHEMA);
+      persist();
+    }
+    return db;
+  })();
+  return initPromise;
 }
 
 // ---------- 密钥加解密（safeStorage 基于 OS：Windows DPAPI / macOS Keychain） ----------
@@ -78,44 +142,45 @@ function genId(prefix) {
 }
 
 // ---------- 会议记录 ----------
-function createMeeting(data) {
-  initDb();
+async function createMeeting(data) {
+  await initDb();
   const id = genId('m_');
   const now = Date.now();
-  db.prepare(
-    'INSERT INTO meetings (id, title, topic, scene, mode, director_notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(id, data.title || '', data.topic || '', data.scene || '', data.mode || '', data.directorNotes || '', now, now);
+  run(
+    'INSERT INTO meetings (id, title, topic, scene, mode, director_notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+    [id, data.title || '', data.topic || '', data.scene || '', data.mode || '', data.directorNotes || '', now, now]
+  );
   return id;
 }
 
-function appendMessage(meetingId, msg) {
-  if (!db) initDb();
+async function appendMessage(meetingId, msg) {
+  await initDb();
   if (!meetingId || !msg) return;
-  const seq = db.prepare('SELECT COALESCE(MAX(seq),0)+1 AS n FROM messages WHERE meeting_id=?').get(meetingId).n;
+  const row = get('SELECT COALESCE(MAX(seq),0)+1 AS n FROM messages WHERE meeting_id=?', [meetingId]);
+  const seq = row ? row.n : 1;
   const extra = {};
   ['director', 'probe', 'refocus', 'action', 'speaker', 'replyTo', 'vote', 'fallback', 'lean'].forEach(function (k) {
     if (msg[k] !== undefined) extra[k] = msg[k];
   });
-  db.prepare(
-    'INSERT INTO messages (meeting_id, seq, kind, role_id, name, title, avatar, model, stance, phase, text, extra, ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
-  ).run(
-    meetingId, seq, msg.kind || '', msg.roleId || '', msg.name || '', msg.title || '', msg.avatar || '',
-    msg.model || '', msg.stance || '', msg.phase || '', msg.text || '', JSON.stringify(extra), msg.ts || Date.now()
+  run(
+    'INSERT INTO messages (meeting_id, seq, kind, role_id, name, title, avatar, model, stance, phase, text, extra, ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [meetingId, seq, msg.kind || '', msg.roleId || '', msg.name || '', msg.title || '', msg.avatar || '',
+      msg.model || '', msg.stance || '', msg.phase || '', msg.text || '', JSON.stringify(extra), msg.ts || Date.now()]
   );
 }
 
-function listMeetings() {
-  if (!db) initDb();
-  return db.prepare(
+async function listMeetings() {
+  await initDb();
+  return all(
     'SELECT m.id, m.title, m.topic, m.scene, m.mode, m.created_at, m.updated_at, ' +
     '(SELECT COUNT(*) FROM messages WHERE meeting_id=m.id) AS msg_count ' +
     'FROM meetings m ORDER BY m.created_at DESC'
-  ).all();
+  );
 }
 
-function getMeeting(id) {
-  if (!db) initDb();
-  const rows = db.prepare('SELECT * FROM messages WHERE meeting_id=? ORDER BY seq').all(id);
+async function getMeeting(id) {
+  await initDb();
+  const rows = all('SELECT * FROM messages WHERE meeting_id=? ORDER BY seq', [id]);
   return rows.map(function (r) {
     const m = {
       kind: r.kind, roleId: r.role_id, name: r.name, title: r.title, avatar: r.avatar,
@@ -126,28 +191,28 @@ function getMeeting(id) {
   });
 }
 
-function deleteMeeting(id) {
-  if (!db) initDb();
-  db.prepare('DELETE FROM messages WHERE meeting_id=?').run(id);
-  db.prepare('DELETE FROM meetings WHERE id=?').run(id);
+async function deleteMeeting(id) {
+  await initDb();
+  run('DELETE FROM messages WHERE meeting_id=?', [id]);
+  run('DELETE FROM meetings WHERE id=?', [id]);
 }
 
-function updateMeeting(id, patch) {
-  if (!db) initDb();
+async function updateMeeting(id, patch) {
+  await initDb();
   const sets = [];
   const vals = [];
   if (patch.title !== undefined) { sets.push('title=?'); vals.push(patch.title); }
   if (patch.directorNotes !== undefined) { sets.push('director_notes=?'); vals.push(patch.directorNotes); }
   sets.push('updated_at=?'); vals.push(Date.now());
   vals.push(id);
-  db.prepare('UPDATE meetings SET ' + sets.join(',') + ' WHERE id=?').run(vals);
+  run('UPDATE meetings SET ' + sets.join(',') + ' WHERE id=?', vals);
 }
 
 // ---------- 模型提供商（API Key 加密存储） ----------
-function listProviders() {
-  if (!db) initDb();
-  return db.prepare('SELECT key, name, protocol, base_url, default_model, temperature, updated_at FROM providers')
-    .all().map(function (r) {
+async function listProviders() {
+  await initDb();
+  return all('SELECT key, name, protocol, base_url, default_model, temperature, updated_at FROM providers')
+    .map(function (r) {
       return {
         key: r.key,
         name: r.name,
@@ -160,41 +225,44 @@ function listProviders() {
     });
 }
 
-function setProvider(key, cfg) {
-  if (!db) initDb();
+async function setProvider(key, cfg) {
+  await initDb();
   const now = Date.now();
-  const existing = db.prepare('SELECT api_key_enc FROM providers WHERE key=?').get(key);
+  const existing = get('SELECT api_key_enc FROM providers WHERE key=?', [key]);
   // 仅在传入非空明文时重新加密；否则沿用已有密文，避免"改动名字却清空真实密钥"
   const encKey = (cfg.apiKey && String(cfg.apiKey).length)
     ? enc(cfg.apiKey)
     : (existing ? existing.api_key_enc : '');
   if (existing) {
-    db.prepare(
-      'UPDATE providers SET name=?, protocol=?, base_url=?, default_model=?, api_key_enc=?, temperature=?, updated_at=? WHERE key=?'
-    ).run(cfg.name || '', cfg.protocol || 'openai', cfg.baseUrl || '', cfg.defaultModel || '',
-      encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), now, key);
+    run(
+      'UPDATE providers SET name=?, protocol=?, base_url=?, default_model=?, api_key_enc=?, temperature=?, updated_at=? WHERE key=?',
+      [cfg.name || '', cfg.protocol || 'openai', cfg.baseUrl || '', cfg.defaultModel || '',
+        encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), now, key]
+    );
   } else {
-    db.prepare(
-      'INSERT INTO providers (key, name, protocol, base_url, default_model, api_key_enc, temperature, updated_at) VALUES (?,?,?,?,?,?,?,?)'
-    ).run(key, cfg.name || '', cfg.protocol || 'openai', cfg.baseUrl || '', cfg.defaultModel || '',
-      encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), now);
+    run(
+      'INSERT INTO providers (key, name, protocol, base_url, default_model, api_key_enc, temperature, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+      [key, cfg.name || '', cfg.protocol || 'openai', cfg.baseUrl || '', cfg.defaultModel || '',
+        encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), now]
+    );
   }
 }
 
-function deleteProvider(key) {
-  if (!db) initDb();
-  db.prepare('DELETE FROM providers WHERE key=?').run(key);
+async function deleteProvider(key) {
+  await initDb();
+  run('DELETE FROM providers WHERE key=?', [key]);
 }
 
-function getDecryptedKey(key) {
-  if (!db) initDb();
-  const row = db.prepare('SELECT api_key_enc FROM providers WHERE key=?').get(key);
+async function getDecryptedKey(key) {
+  await initDb();
+  const row = get('SELECT api_key_enc FROM providers WHERE key=?', [key]);
   return row ? dec(row.api_key_enc) : '';
 }
 
 // 首次启动时把渲染层 localStorage 里的旧明文 providers 加密迁入主进程库
-function migrate(legacy) {
+async function migrate(legacy) {
   if (!legacy || typeof legacy !== 'object') return;
+  await initDb();
   Object.keys(legacy).forEach(function (k) {
     const v = legacy[k] || {};
     setProvider(k, {
