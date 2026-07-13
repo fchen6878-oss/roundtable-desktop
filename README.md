@@ -71,6 +71,8 @@ npm run dist        # 打包安装包
 - **API Key 不落明文**：配置改走主进程，Key 经 `safeStorage` 加密后以密文存入数据库；前端「查看明文」仅临时取回、关闭即清空，绝不写入 `localStorage`。首次启动会自动把旧版明文密钥加密迁移入库。
 - **会议记录自动存档**：每条发言经辩论引擎实时写入 `messages` 表，关掉再开不丢失。菜单「会议 → 历史会议」可列出全部会议并回看完整讨论，亦支持导出 Markdown 纪要。
 - **完全离线可用**：Mock 模式无需任何 API Key 即可体验完整流程，本地数据库同样记录 Mock 会议。
+- **按厂商超时**：每个模型提供商可单独设置「超时（秒）」，全局默认 60 秒；Kimi（Moonshot）等响应较慢的模型默认 90 秒，避免被硬超时打断（表现为 `signal is aborted without reason`）。超时仅在对应厂商卡片中配置，存于 `providers.timeout_ms` 字段。
+- **按厂商最大输出 token**：推理模型（Kimi / DeepSeek 等）会把「思考过程」吐进 `reasoning_content`，这部分也占用 `max_tokens` 预算；若预算过小会 `finish_reason=length` 且 `content` 为空（表现为「返回为空」）。每个厂商卡片可单独设「最大输出 token」，全局默认 4096，Kimi / DeepSeek 等默认 8192，存于 `providers.max_tokens` 字段。
 
 ## 项目结构
 
@@ -87,7 +89,7 @@ roundtable/
 ├── electron/
 │   ├── main.js           # Electron 主进程：窗口 / 菜单 / 更新 / 单实例锁 / IPC
 │   ├── preload.js        # 安全桥：contextBridge 暴露 window.api（db/* + keys/*）
-│   └── db.js            # 本地存储层：better-sqlite3 建表 / 加密密钥 CRUD
+│   └── db.js            # 本地存储层：sql.js（WASM 版 SQLite）建表 / 加密密钥 CRUD
 ├── build/                # 构建资源（图标 / NSIS 配置）
 └── test/smoke.cjs        # 冒烟测试套件
 ```

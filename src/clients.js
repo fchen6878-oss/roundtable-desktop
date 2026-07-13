@@ -163,7 +163,10 @@
       this.proxyEnabled = !!(opts && opts.proxyEnabled);
       this.proxyBase = (opts && opts.proxyBase) || 'http://localhost:8787';
       this.onStatus = (opts && opts.onStatus) || function () {};
-      this.timeout = (opts && opts.timeout) || 20000;
+      this.timeout = (opts && opts.timeout) || 60000;
+      // 全局 max_tokens 保底：推理模型（Kimi/DeepSeek 等）的思考 token 也吃此预算，
+      // 若太小会 finish_reason=length 且 content 为空；4096 足以容纳普通回答+少量思考。
+      this.maxTokens = (opts && opts.maxTokens) || 4096;
     }
 
     _cfg(provider) {
@@ -221,9 +224,13 @@
       }
       const msgs = buildMessages(role, ctx, this.discussionMode);
       const temperature = (typeof cfg.temperature === 'number') ? cfg.temperature : 0.85;
+      // 超时：优先用厂商级配置（如 Kimi 默认 90s），否则回退全局默认
+      const effectiveTimeout = (typeof cfg.timeout === 'number' && cfg.timeout > 0) ? cfg.timeout : this.timeout;
+      // 输出上限：推理模型（Kimi/DeepSeek 等）思考 token 也吃此预算，优先用厂商级 maxTokens（如 8192），否则全局保底 4096
+      const effectiveMax = (typeof cfg.maxTokens === 'number' && cfg.maxTokens > 0) ? cfg.maxTokens : this.maxTokens;
       const opts = {
         model: model,
-        temperature: temperature, max_tokens: 420, timeout: this.timeout
+        temperature: temperature, max_tokens: effectiveMax, timeout: effectiveTimeout
       };
       const status = (msg) => this.onStatus('⏳ ' + label + '（' + model + '）：' + msg);
       let p;

@@ -27,7 +27,7 @@
     zhipu:     { name: '智谱 AI',        protocol: 'openai',    baseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-plus' },
     deepseek:  { name: 'DeepSeek',       protocol: 'openai',    baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
     qwen:      { name: '通义千问',       protocol: 'openai',    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-plus' },
-    kimi:      { name: 'Kimi（Moonshot）', protocol: 'openai',  baseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k', temperature: 1 }
+    kimi:      { name: 'Kimi（Moonshot）', protocol: 'openai',  baseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k', temperature: 1, timeout: 90000, maxTokens: 8192 }
   };
   function protoTag(p) {
     return p === 'anthropic' ? 'Anthropic 兼容' : p === 'ollama' ? 'Ollama 本地' : 'OpenAI 兼容';
@@ -166,6 +166,7 @@
   let branchSeq = 0;
   let pendingSnap = null;   // 当前打开分支表单所针对的快照
   let compareSel = new Set(); // 对比浮层中勾选的分支 id 集合
+  let viewingHistoryMeta = null; // 当前载入的历史会议元数据；导出纪要时优先取用，避免与当前会话 state 串味
 
   function rid() { return 'r' + Math.random().toString(36).slice(2, 8); }
   function $(s) { return document.querySelector(s); }
@@ -216,6 +217,8 @@
           defaultModel: v.defaultModel || ''
         };
         if (typeof v.temperature === 'number') entry.temperature = v.temperature;
+        if (typeof v.timeout === 'number') entry.timeout = v.timeout;
+        if (typeof v.maxTokens === 'number') entry.maxTokens = v.maxTokens;
         state.providers[k] = entry;
       });
     }
@@ -244,8 +247,25 @@
       state.providers = map;
       if (!$('#settingsModal').classList.contains('hidden')) renderSettings();
       bindHostInputs();
+      renderRoles(); // 异步加载完成后重渲染角色卡片，补全「绑定模型」下拉里的已有厂商
     } catch (e) { console.error('[Roundtable] loadProviders failed', e); }
   }
+  // 桌面端启动会议 / 分支前，把主进程库里加密的 Key 解密注入到运行时 providers。
+  // state.providers 中的 apiKey 始终为空（安全：明文不长期驻留渲染层），仅在调用瞬间注入；
+  // 网页版（无 window.api）走 localStorage 回退，providers 自身已带明文，直接返回。
+  async function buildRuntimeProviders() {
+    if (!hasApi()) return state.providers;
+    const out = {};
+    const ks = Object.keys(state.providers);
+    await Promise.all(ks.map(async function (k) {
+      const p = state.providers[k];
+      let ak = p.apiKey || '';
+      if (!ak) { try { ak = await window.api.keys.getDecryptedKey(k); } catch (e) { ak = ''; } }
+      out[k] = Object.assign({}, p, { apiKey: ak || '' });
+    }));
+    return out;
+  }
+
   // 首次启动：把渲染层 localStorage 里的旧明文 providers 加密迁入主进程库，再清空 localStorage
   async function migrateLegacyProviders() {
     if (!hasApi()) return;
@@ -427,6 +447,10 @@
         '<input id="npModel" placeholder="如 gpt-4o / deepseek-chat / qwen-max"></div>' +
       '<div class="field"><label>温度（可选，默认 0.85；部分模型仅支持 1，如 Kimi）</label>' +
         '<input id="npTemp" type="number" step="0.05" min="0" max="2" placeholder="0.85"></div>' +
+      '<div class="field"><label>超时秒（可选，默认 60；Kimi / 慢模型建议 90）</label>' +
+        '<input id="npTimeout" type="number" min="1" step="1" placeholder="60"></div>' +
+      '<div class="field"><label>最大输出 token（可选，默认 4096；Kimi / DeepSeek 等推理模型思考也占预算，建议 8192）</label>' +
+        '<input id="npMaxTokens" type="number" min="256" step="256" placeholder="4096"></div>' +
       '<div class="field"><label>API Key（可选，部分服务不需要）</label>' +
         '<div style="display:flex;gap:6px;align-items:center"><input id="npKey" type="password" placeholder="sk-...">' +
         '<button id="npReveal" type="button" class="btn btn-xs btn-ghost has-ic ic-eye" title="显示/隐藏明文"></button></div></div>' +
@@ -453,6 +477,7 @@
       '一键添加常见厂商（OpenAI / Anthropic / Ollama / 智谱 AI / DeepSeek / 通义千问 / Kimi）后，也可继续添加任意走 OpenAI 或 Anthropic 协议的自定义模型，并在角色/主持人的「绑定模型」中选用。' +
       '注意：智谱、DeepSeek、通义千问、Kimi 等国内模型均为「OpenAI 兼容协议」，不要选成 Anthropic 协议（否则会请求 /v1/messages 而 404）。' +
       '「温度」默认 0.85；部分模型（如 Kimi 的 kimi-k2）仅接受 1，可在对应厂商卡片中单独设置，否则会报 HTTP 400。' +
+      '「超时」默认 60 秒（毫秒级硬超时，超时即回退模拟，全局安全上限仍受 Electron 网络栈约束）；Kimi（Moonshot）等响应较慢的模型已自动设为 90 秒，若仍触发 "signal is aborted" 可在对应厂商卡片手动调大。' +
       '真实模式下从浏览器直接调用可能受 CORS 限制，失败会自动回退模拟并提示；勾选代理并运行 proxy.js 可规避（仅对官方 OpenAI/Anthropic 域名生效）。'));
 
     m.appendChild(card);
@@ -519,6 +544,42 @@
     modelRow.appendChild(temp);
     wrap.appendChild(modelRow);
 
+    // 超时（秒，存储为毫秒）：Kimi 等慢模型可调大，避免被硬超时打断
+    const toRow = el('div', 'prov-timeout-row');
+    const to = el('input');
+    to.type = 'number';
+    to.min = '1';
+    to.step = '1';
+    to.id = 'setTo_' + key;
+    to.placeholder = '超时秒（默认 60；Kimi 建议 90）';
+    if (typeof p.timeout === 'number') to.value = Math.round(p.timeout / 1000);
+    to.addEventListener('input', () => {
+      const v = parseInt(to.value, 10);
+      if (to.value === '' || isNaN(v)) delete p.timeout;
+      else p.timeout = v * 1000;
+      persistProvider(key);
+    });
+    toRow.appendChild(to);
+    wrap.appendChild(toRow);
+
+    // 最大输出 token：推理模型（Kimi/DeepSeek 等）思考 token 也吃此预算，太小会导致 content 为空（finish_reason=length）。默认留空走全局 4096，Kimi 等建议 8192。
+    const mtRow = el('div', 'prov-timeout-row');
+    const mt = el('input');
+    mt.type = 'number';
+    mt.min = '256';
+    mt.step = '256';
+    mt.id = 'setMt_' + key;
+    mt.placeholder = '最大输出 token（默认 4096；Kimi 建议 8192）';
+    if (typeof p.maxTokens === 'number') mt.value = p.maxTokens;
+    mt.addEventListener('input', () => {
+      const v = parseInt(mt.value, 10);
+      if (mt.value === '' || isNaN(v)) delete p.maxTokens;
+      else p.maxTokens = v;
+      persistProvider(key);
+    });
+    mtRow.appendChild(mt);
+    wrap.appendChild(mtRow);
+
     const needsKey = p.protocol !== 'ollama';
     if (needsKey) {
       const row = el('div', 'prov-key-row');
@@ -567,11 +628,17 @@
     const keyVal = $('#npKey') ? $('#npKey').value : '';
     const tv = $('#npTemp') ? $('#npTemp').value.trim() : '';
     const tnum = parseFloat(tv);
+    const tov = $('#npTimeout') ? $('#npTimeout').value.trim() : '';
+    const tonum = parseInt(tov, 10);
+    const mtv = $('#npMaxTokens') ? $('#npMaxTokens').value.trim() : '';
+    const mtnum = parseInt(mtv, 10);
     if (!name) { alert('请填写名称'); return; }
     if (!url) { alert('请填写 Base URL'); return; }
     const key = 'c_' + Math.random().toString(36).slice(2, 8);
     const entry = { name: name, protocol: proto, baseUrl: url, apiKey: keyVal, defaultModel: model };
     if (tv !== '' && !isNaN(tnum)) entry.temperature = tnum;
+    if (tov !== '' && !isNaN(tonum)) entry.timeout = tonum * 1000; // 秒→毫秒
+    if (mtv !== '' && !isNaN(mtnum)) entry.maxTokens = mtnum;
     state.providers[key] = entry;
     persistProvider(key);
     renderSettings();
@@ -592,6 +659,8 @@
       name: p.name, protocol: p.protocol, baseUrl: p.baseUrl, apiKey: '', defaultModel: p.defaultModel
     };
     if (typeof p.temperature === 'number') entry.temperature = p.temperature;
+    if (typeof p.timeout === 'number') entry.timeout = p.timeout;
+    if (typeof p.maxTokens === 'number') entry.maxTokens = p.maxTokens;
     state.providers[key] = entry;
     persistProvider(key);
     renderSettings();
@@ -645,6 +714,7 @@
       if (!cfg.topic) { alert('请先填写议题'); return; }
       if (cfg.roles.length < 2) { alert('至少需要 2 位角色'); return; }
       _ended = false;   // 新会议，重置结束门控
+      viewingHistoryMeta = null; // 开始新会议，清除历史会议元数据
       clearTypewriters();  // 清除上一轮残留的打字机定时器，防止干扰新会议渲染
 
       $('#startBtn').disabled = true;
@@ -667,9 +737,10 @@
           '建议用本地代理（运行 proxy.js）或改用 http 服务打开，否则将自动回退模拟。');
       }
 
-      const router = new ModelRouter(state.providers, state.realMode ? 'real' : 'mock', {
+      const runtimeProviders = await buildRuntimeProviders();
+      const router = new ModelRouter(runtimeProviders, state.realMode ? 'real' : 'mock', {
         proxyEnabled: state.proxyEnabled, proxyBase: 'http://localhost:8787',
-        onStatus: setStatus, timeout: 20000, discussionMode: state.discussionMode
+        onStatus: setStatus, timeout: 60000, discussionMode: state.discussionMode
       });
       if (engine) {
         engine.abort();
@@ -927,20 +998,42 @@
   function exportMarkdown() {
     if (!engine || !engine.transcript.length) { alert('还没有可导出的会议记录'); return; }
     const tr = engine.transcript.filter(e => e.kind === 'speech' || e.kind === 'host');
-    const mode = (activeBranch && activeBranch.engine.mode) || state.mode;
+    const isHistory = !!viewingHistoryMeta;
+    // 历史记录用其自身存储的元数据（议题/模式/主持人/角色），避免与当前会话 state 串味
+    const topic = isHistory ? (viewingHistoryMeta.title || viewingHistoryMeta.topic || '') : state.topic;
+    const mode = isHistory ? (viewingHistoryMeta.mode || '') : ((activeBranch && activeBranch.engine.mode) || state.mode);
     let md = '# 圆桌会议纪要\n\n';
-    md += '**议题：** ' + state.topic + '\n\n';
+    md += '**议题：** ' + topic + '\n\n';
     md += '**模式：** ' + (MODE_LABEL[mode] || mode) + '\n\n';
-    md += '**运行：** ' + (state.realMode ? '真实模型' : '模拟模式') + '\n\n';
-    md += '**主持人：** ' + state.host.name + '（' + dispModel(state.host) + '）\n\n';
-    md += '**当前分支：** ' + (activeBranch ? activeBranch.label : '主线') +
-      (activeBranch && activeBranch.director ? '（导演指令：' + activeBranch.director + '）' : '') + '\n\n';
-    md += '**参与角色：**\n';
-    state.roles.forEach(r => {
-      const st = STANCE[r.stance] || STANCE.neutral;
-      md += '- ' + r.name + '（' + (r.title || '') + '）· ' + st.label + ' · ' + dispModel(r) + '\n';
-    });
-    md += '\n---\n\n## 讨论记录\n\n';
+    if (isHistory) {
+      // 历史记录：议题/主持人/角色均来自库内存储的该场会议元数据，不再引用当前会话
+      const hasReal = tr.some(e => e.model);
+      md += '**运行：** ' + (hasReal ? '真实模型' : '模拟模式') + '（历史记录）\n\n';
+      const host = tr.find(e => e.kind === 'host');
+      if (host) md += '**主持人：** ' + host.name + '（' + (host.model || '—') + '）\n\n';
+      md += '**参与角色：**\n';
+      const seen = {};
+      tr.filter(e => e.kind === 'speech').forEach(e => {
+        const key = e.role_id || e.name;
+        if (seen[key]) return;
+        seen[key] = true;
+        const st = STANCE[e.stance] || STANCE.neutral;
+        md += '- ' + e.name + '（' + (e.title || '') + '）· ' + st.label + ' · ' + (e.model || '—') + '\n';
+      });
+      md += '\n';
+    } else {
+      md += '**运行：** ' + (state.realMode ? '真实模型' : '模拟模式') + '\n\n';
+      md += '**主持人：** ' + state.host.name + '（' + dispModel(state.host) + '）\n\n';
+      md += '**当前分支：** ' + (activeBranch ? activeBranch.label : '主线') +
+        (activeBranch && activeBranch.director ? '（导演指令：' + activeBranch.director + '）' : '') + '\n\n';
+      md += '**参与角色：**\n';
+      state.roles.forEach(r => {
+        const st = STANCE[r.stance] || STANCE.neutral;
+        md += '- ' + r.name + '（' + (r.title || '') + '）· ' + st.label + ' · ' + dispModel(r) + '\n';
+      });
+      md += '\n';
+    }
+    md += '---\n\n## 讨论记录\n\n';
     tr.forEach(e => {
       if (e.kind === 'host') {
         md += '**🎬 ' + e.name + (e.director ? '（导演指令）' : '') + '：** ' + e.text + '\n\n';
@@ -967,6 +1060,7 @@
     clearWatchdog();
     if (engine) { engine.abort(); engine.onEvent = function () {}; }
     running = false; engine = null; _ended = false;
+    viewingHistoryMeta = null; // 重置会议时一并清除历史会议元数据
     branches = []; activeBranch = null; pendingSnap = null;
     // 重置时重建 #emptyState（它在首次 startMeeting 的 innerHTML='' 中被销毁了）
     $('#chat').innerHTML = '<div id="emptyState" class="empty">' +
@@ -1044,7 +1138,7 @@
         const acts = el('div', 'hist-acts');
         acts.style.cssText = 'display:flex;gap:6px';
         const open = el('button', 'btn btn-xs btn-primary', '打开');
-        open.addEventListener('click', () => loadHistoryMeeting(m.id, overlay));
+        open.addEventListener('click', () => loadHistoryMeeting(m, overlay));
         const del = el('button', 'btn btn-xs btn-ghost', '删除');
         del.addEventListener('click', async () => {
           if (!confirm('删除该会议记录？此操作不可恢复。')) return;
@@ -1060,13 +1154,17 @@
     overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add('hidden'); };
   }
 
-  async function loadHistoryMeeting(id, overlay) {
+  async function loadHistoryMeeting(m, overlay) {
+    // 会议进行中禁止打开历史会议：当前为单聊天视图 + 单 engine，打开历史会冲掉 running
+    // 状态、错误启用「开始会议」按钮，且后台会议仍在跑会把新发言追加到历史视图里。无还原机制，故直接拦截。
+    if (running) { alert('当前有会议正在进行，请先结束会议后再查看历史记录。'); return; }
     let msgs = [];
-    try { msgs = await window.api.db.getMeeting(id); } catch (e) { console.error('[Roundtable] getMeeting failed', e); return; }
+    try { msgs = await window.api.db.getMeeting(m.id); } catch (e) { console.error('[Roundtable] getMeeting failed', e); return; }
     if (overlay) overlay.classList.add('hidden');
     $('#chat').innerHTML = '';
     renderTranscriptInstant(msgs);
     engine = { transcript: msgs, done: true };   // 供"导出纪要"复用当前记录
+    viewingHistoryMeta = { title: m.title, topic: m.topic, scene: m.scene, mode: m.mode }; // 供导出纪要取用真实元数据
     running = false;
     $('#startBtn').disabled = false;
     $('#startBtn').textContent = '开始会议';
@@ -1142,14 +1240,15 @@
     $('#forkGo').onclick = () => doFork();
   }
 
-  function doFork() {
+  async function doFork() {
     if (!pendingSnap) return;
     const snap = pendingSnap;
     const directorText = $('#forkDirector').value.trim();
     $('#bpForm').classList.add('hidden');
     pendingSnap = null;
 
-    const router = new ModelRouter(state.providers, state.realMode ? 'real' : 'mock', {
+    const runtimeProviders = await buildRuntimeProviders();
+    const router = new ModelRouter(runtimeProviders, state.realMode ? 'real' : 'mock', {
       proxyEnabled: state.proxyEnabled, proxyBase: 'http://localhost:8787',
       discussionMode: state.discussionMode
     });

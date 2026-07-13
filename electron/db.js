@@ -46,6 +46,8 @@ const SCHEMA = `
     default_model TEXT,
     api_key_enc TEXT,
     temperature REAL,
+    timeout_ms INTEGER,
+    max_tokens INTEGER,
     updated_at INTEGER
   );
   CREATE INDEX IF NOT EXISTS idx_messages_meeting ON messages(meeting_id, seq);
@@ -118,6 +120,9 @@ async function initDb() {
       db.exec(SCHEMA);
       persist();
     }
+    // 向后兼容：已有库可能缺少 timeout_ms / max_tokens 列，安全补列（已存在则忽略错误）
+    try { db.run('ALTER TABLE providers ADD COLUMN timeout_ms INTEGER'); } catch (e) {}
+    try { db.run('ALTER TABLE providers ADD COLUMN max_tokens INTEGER'); } catch (e) {}
     return db;
   })();
   return initPromise;
@@ -211,9 +216,9 @@ async function updateMeeting(id, patch) {
 // ---------- 模型提供商（API Key 加密存储） ----------
 async function listProviders() {
   await initDb();
-  return all('SELECT key, name, protocol, base_url, default_model, temperature, updated_at FROM providers')
+  return all('SELECT key, name, protocol, base_url, default_model, temperature, timeout_ms, max_tokens, updated_at FROM providers')
     .map(function (r) {
-      return {
+      const p = {
         key: r.key,
         name: r.name,
         protocol: r.protocol,
@@ -222,28 +227,50 @@ async function listProviders() {
         temperature: r.temperature,
         apiKey: '' // 绝不返回明文
       };
+      if (typeof r.timeout_ms === 'number') p.timeout = r.timeout_ms; // 毫秒
+      else {
+        // 旧行（升级前添加的厂商）timeout_ms 为 NULL：给已知慢响应厂商一个合理默认，
+        // 避免一路回退到全局 20s 硬超时导致 Kimi 等模型被提前 abort。
+        const slow = /moonshot|kimi/i.test(r.base_url || '') || /kimi/i.test(r.key || '');
+        if (slow) p.timeout = 90000;
+      }
+      if (typeof r.max_tokens === 'number') p.maxTokens = r.max_tokens; // 推理模型需放大，否则思考 token 吃光预算导致 content 为空
+      else {
+        // 旧行 max_tokens 为 NULL：推理模型（Kimi / DeepSeek 等）默认放大到 8192，普通模型保持全局默认（客户端 4096）
+        const reasoning = /moonshot|kimi|deepseek/i.test(r.base_url || '') || /kimi|deepseek/i.test(r.key || '');
+        if (reasoning) p.maxTokens = 8192;
+      }
+      return p;
     });
 }
 
 async function setProvider(key, cfg) {
   await initDb();
   const now = Date.now();
-  const existing = get('SELECT api_key_enc FROM providers WHERE key=?', [key]);
+  const existing = get('SELECT api_key_enc, timeout_ms, max_tokens FROM providers WHERE key=?', [key]);
   // 仅在传入非空明文时重新加密；否则沿用已有密文，避免"改动名字却清空真实密钥"
   const encKey = (cfg.apiKey && String(cfg.apiKey).length)
     ? enc(cfg.apiKey)
     : (existing ? existing.api_key_enc : '');
+  // 传入有效超时（毫秒）时写入；否则沿用已有值，避免"改名字却清空超时"
+  const toMs = (typeof cfg.timeout === 'number' && cfg.timeout > 0)
+    ? cfg.timeout
+    : (existing ? existing.timeout_ms : null);
+  // 传入有效 max_tokens 时写入；否则沿用已有值
+  const mt = (typeof cfg.maxTokens === 'number' && cfg.maxTokens > 0)
+    ? cfg.maxTokens
+    : (existing ? existing.max_tokens : null);
   if (existing) {
     run(
-      'UPDATE providers SET name=?, protocol=?, base_url=?, default_model=?, api_key_enc=?, temperature=?, updated_at=? WHERE key=?',
+      'UPDATE providers SET name=?, protocol=?, base_url=?, default_model=?, api_key_enc=?, temperature=?, timeout_ms=?, max_tokens=?, updated_at=? WHERE key=?',
       [cfg.name || '', cfg.protocol || 'openai', cfg.baseUrl || '', cfg.defaultModel || '',
-        encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), now, key]
+        encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), toMs, mt, now, key]
     );
   } else {
     run(
-      'INSERT INTO providers (key, name, protocol, base_url, default_model, api_key_enc, temperature, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+      'INSERT INTO providers (key, name, protocol, base_url, default_model, api_key_enc, temperature, timeout_ms, max_tokens, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
       [key, cfg.name || '', cfg.protocol || 'openai', cfg.baseUrl || '', cfg.defaultModel || '',
-        encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), now]
+        encKey, (typeof cfg.temperature === 'number' ? cfg.temperature : null), toMs, mt, now]
     );
   }
 }
@@ -267,7 +294,7 @@ async function migrate(legacy) {
     const v = legacy[k] || {};
     setProvider(k, {
       name: v.name, protocol: v.protocol, baseUrl: v.baseUrl, defaultModel: v.defaultModel,
-      apiKey: v.apiKey || '', temperature: v.temperature
+      apiKey: v.apiKey || '', temperature: v.temperature, timeout: v.timeout, maxTokens: v.maxTokens
     });
   });
 }

@@ -639,6 +639,21 @@ textarea { resize: vertical; min-height: 58px; line-height: 1.5; }
   width: 90px;
   flex: none;
 }
+/* 超时（秒）输入行 */
+.prov-timeout-row { margin-bottom: 6px; }
+.prov-timeout-row > input {
+  width: 100%;
+  height: 34px;
+  padding: 0 9px;
+  font-size: var(--fs-13);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  outline: none;
+  box-sizing: border-box;
+}
+.prov-timeout-row > input:focus { border-color: var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .check { display: flex; align-items: center; gap: 7px; font-size: var(--fs-12); color: var(--text); margin: 4px 0 2px; cursor: pointer; }
 .check input { width: auto; flex: none; }
 code { background: var(--panel-2); padding: 1px 5px; border-radius: var(--r-sm); font-size: 11px; }
