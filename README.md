@@ -55,6 +55,22 @@ npm run dist        # 打包安装包
 | 构建 | electron-builder (NSIS) |
 | 自动更新 | electron-updater (GitHub Releases) |
 | AI 对接 | OpenAI 兼容 API（支持 DeepSeek / 通义千问 / Kimi 等） |
+| 本地存储 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)（会议记录） |
+| 密钥加密 | Electron [safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)（OS 级加密） |
+
+## 数据存储 / Data Storage
+
+| 数据 | 存储位置 | 加密 | 跨设备 |
+|------|---------|------|--------|
+| **模型配置（API Key）** | 主进程加密后入库（SQLite `providers` 表，密文） | ✅ safeStorage（Windows DPAPI / macOS Keychain） | ❌ 仅本机 |
+| **会议记录** | 本地 SQLite 数据库 `<userData>/roundtable.db`（`meetings` / `messages` / `providers` 三表） | — | ❌ 仅本机 |
+| **会议记录导出** | 用户主动点「导出纪要」生成的 `.md` 文件 | — | ✅（自行传输） |
+
+**设计原则**：渲染层（前端）不直接接触数据库与密钥，全部经主进程 IPC（`window.api`）完成。
+
+- **API Key 不落明文**：配置改走主进程，Key 经 `safeStorage` 加密后以密文存入数据库；前端「查看明文」仅临时取回、关闭即清空，绝不写入 `localStorage`。首次启动会自动把旧版明文密钥加密迁移入库。
+- **会议记录自动存档**：每条发言经辩论引擎实时写入 `messages` 表，关掉再开不丢失。菜单「会议 → 历史会议」可列出全部会议并回看完整讨论，亦支持导出 Markdown 纪要。
+- **完全离线可用**：Mock 模式无需任何 API Key 即可体验完整流程，本地数据库同样记录 Mock 会议。
 
 ## 项目结构
 
@@ -69,7 +85,9 @@ roundtable/
 │   ├── clients.js        # 真实 API 客户端（OpenAI 兼容）
 │   └── compare.js        # 分支对比算法与碰撞图渲染
 ├── electron/
-│   └── main.js           # Electron 主进程：窗口 / 菜单 / 更新 / 单实例锁
+│   ├── main.js           # Electron 主进程：窗口 / 菜单 / 更新 / 单实例锁 / IPC
+│   ├── preload.js        # 安全桥：contextBridge 暴露 window.api（db/* + keys/*）
+│   └── db.js            # 本地存储层：better-sqlite3 建表 / 加密密钥 CRUD
 ├── build/                # 构建资源（图标 / NSIS 配置）
 └── test/smoke.cjs        # 冒烟测试套件
 ```
