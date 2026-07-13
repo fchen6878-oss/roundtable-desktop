@@ -133,6 +133,10 @@
   };
   function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  // 是否运行在 Electron 主进程桥可用（window.api 存在）的环境中
+  function hasApi() { return typeof window !== 'undefined' && !!window.api; }
+  // 当前会议在数据库中的 id（仅桌面端落库时使用）
+  let currentMeetingId = null;
 
   let state = {
     topic: '我们团队是否应该立刻全面转向 AI 辅助编程？',
@@ -221,6 +225,35 @@
   }
   function saveStore() {
     lsSet(LS.prov, state.providers); lsSet(LS.mode, state.realMode); lsSet(LS.proxy, state.proxyEnabled);
+  }
+  // 持久化单个提供商：桌面端走主进程加密存储；否则退回 localStorage（网页版/测试）
+  function persistProvider(key) {
+    if (hasApi()) {
+      window.api.keys.setProvider(key, state.providers[key]).catch(function (e) { console.error('[Roundtable] setProvider failed', e); });
+    } else {
+      saveStore();
+    }
+  }
+  // 桌面端：从主进程加载已加密的 providers（明文不进前端）
+  async function loadProvidersFromMain() {
+    if (!hasApi()) return;
+    try {
+      const list = await window.api.keys.listProviders();
+      const map = {};
+      list.forEach(function (p) { map[p.key] = p; });
+      state.providers = map;
+      if (!$('#settingsModal').classList.contains('hidden')) renderSettings();
+      bindHostInputs();
+    } catch (e) { console.error('[Roundtable] loadProviders failed', e); }
+  }
+  // 首次启动：把渲染层 localStorage 里的旧明文 providers 加密迁入主进程库，再清空 localStorage
+  async function migrateLegacyProviders() {
+    if (!hasApi()) return;
+    const legacy = lsGet(LS.prov);
+    if (legacy && typeof legacy === 'object' && Object.keys(legacy).length) {
+      try { await window.api.keys.migrate(legacy); lsSet(LS.prov, {}); }
+      catch (e) { console.error('[Roundtable] migrate failed', e); }
+    }
   }
 
   // ---------- 配置面板渲染 ----------
@@ -442,7 +475,7 @@
     const nm = el('input', 'prov-name-input');
     nm.value = p.name || '';
     nm.placeholder = '名称';
-    nm.addEventListener('input', () => { p.name = nm.value; saveStore(); });
+    nm.addEventListener('input', () => { p.name = nm.value; persistProvider(key); });
     head.appendChild(nm);
     head.appendChild(el('span', 'prov-tag', protoTag(p.protocol)));
     const del = el('button', 'prov-del has-ic ic-x', '删除');
@@ -456,7 +489,7 @@
       opt('anthropic', 'Anthropic 兼容协议', 'anthropic');
     if (p.protocol === 'ollama') ps.innerHTML += opt('ollama', 'Ollama 本地', 'ollama');
     ps.value = p.protocol || 'openai';
-    ps.addEventListener('change', () => { p.protocol = ps.value; saveStore(); });
+    ps.addEventListener('change', () => { p.protocol = ps.value; persistProvider(key); });
     wrap.appendChild(ps);
 
     // 模型 + 温度：同一行
@@ -466,7 +499,7 @@
     dm.id = 'setDm_' + key;
     dm.placeholder = '默认模型（可选）';
     dm.value = p.defaultModel || '';
-    dm.addEventListener('input', () => { p.defaultModel = dm.value; saveStore(); });
+    dm.addEventListener('input', () => { p.defaultModel = dm.value; persistProvider(key); });
     modelRow.appendChild(dm);
 
     const temp = el('input');
@@ -481,7 +514,7 @@
       const v = parseFloat(temp.value);
       if (temp.value === '' || isNaN(v)) delete p.temperature;
       else p.temperature = v;
-      saveStore();
+      persistProvider(key);
     });
     modelRow.appendChild(temp);
     wrap.appendChild(modelRow);
@@ -493,14 +526,24 @@
       input.type = 'password';
       input.placeholder = 'API Key（sk-...）';
       input.id = 'setKey_' + key;
-      if (p.apiKey) input.value = p.apiKey; // 仅在 DOM 中以密码框掩码显示，不暴露明文
+      if (p.apiKey && !hasApi()) input.value = p.apiKey; // 网页版回退：仅在非桌面端回填明文
       const reveal = el('button', 'btn btn-xs btn-ghost has-ic ic-eye', '');
       reveal.title = '显示 / 隐藏明文';
-      reveal.addEventListener('click', () => {
-        input.type = input.type === 'password' ? 'text' : 'password';
+      reveal.addEventListener('click', async () => {
+        if (input.type === 'text') {
+          // 隐藏：清空明文（避免明文长期驻留 DOM）
+          input.value = '';
+          input.type = 'password';
+        } else {
+          // 显示：仅临时从主进程取明文填入，不写入 state（主进程才持有密文）
+          let k = p.apiKey || '';
+          if (hasApi() && !k) { try { k = await window.api.keys.getDecryptedKey(key); } catch (e) { k = ''; } }
+          input.value = k;
+          input.type = 'text';
+        }
         input.focus();
       });
-      input.addEventListener('input', () => { p.apiKey = input.value; saveStore(); });
+      input.addEventListener('input', () => { p.apiKey = input.value; persistProvider(key); });
       row.appendChild(input);
       row.appendChild(reveal);
       wrap.appendChild(row);
@@ -530,7 +573,7 @@
     const entry = { name: name, protocol: proto, baseUrl: url, apiKey: keyVal, defaultModel: model };
     if (tv !== '' && !isNaN(tnum)) entry.temperature = tnum;
     state.providers[key] = entry;
-    saveStore();
+    persistProvider(key);
     renderSettings();
     refreshProviderSelectors();
   }
@@ -550,7 +593,7 @@
     };
     if (typeof p.temperature === 'number') entry.temperature = p.temperature;
     state.providers[key] = entry;
-    saveStore();
+    persistProvider(key);
     renderSettings();
     refreshProviderSelectors();
   }
@@ -562,7 +605,8 @@
     delete state.providers[key];
     state.roles.forEach(r => { if (r.provider === key) { r.provider = 'mock'; } });
     if (state.host.provider === key) { state.host.provider = 'mock'; }
-    saveStore();
+    if (hasApi()) window.api.keys.deleteProvider(key).catch(function () {});
+    else saveStore();
     renderSettings();
     refreshProviderSelectors();
   }
@@ -595,7 +639,7 @@
     };
   }
 
-  function startMeeting() {
+  async function startMeeting() {
     try {
       const cfg = collectConfig();
       if (!cfg.topic) { alert('请先填写议题'); return; }
@@ -630,6 +674,13 @@
       if (engine) {
         engine.abort();
         engine.onEvent = function () {};   // 阻止旧引擎异步残留事件（{} kind:'done'）误触发 onDone
+      }
+      if (hasApi()) {
+        try {
+          currentMeetingId = await window.api.db.createMeeting({
+            title: (cfg.topic || '').slice(0, 40), topic: cfg.topic, scene: state.scene, mode: state.mode
+          });
+        } catch (e) { console.error('[Roundtable] createMeeting failed', e); currentMeetingId = null; }
       }
       engine = new MeetingEngine({
         topic: cfg.topic, roles: cfg.roles, host: cfg.host, mode: cfg.mode,
@@ -721,8 +772,14 @@
     if (_ended) return;   // 已结束后丢弃所有引擎后续事件，防止重复消息
     clearWatchdog();      // 收到事件，取消看门狗
     if (ev.kind === 'done') { _ended = true; onDone(); return; }
-    if (ev.kind === 'host') { await renderHost(ev); maybeRefreshPanel(); return; }
-    if (ev.kind === 'speech') { await renderSpeech(ev); maybeRefreshPanel(); return; }
+    if (ev.kind === 'host') {
+      if (hasApi() && currentMeetingId) window.api.db.appendMessage(currentMeetingId, ev).catch(function () {});
+      await renderHost(ev); maybeRefreshPanel(); return;
+    }
+    if (ev.kind === 'speech') {
+      if (hasApi() && currentMeetingId) window.api.db.appendMessage(currentMeetingId, ev).catch(function () {});
+      await renderSpeech(ev); maybeRefreshPanel(); return;
+    }
   }
 
   function renderHost(ev, instant) {
@@ -941,6 +998,80 @@
     const msg = engine.hostMsg('（会议已手动结束，以下为阶段性总结）\n\n' + sum, 'summary');
     renderHost({ name: msg.name, model: msg.model, text: msg.text, director: msg.director }, true);
     onDone();
+  }
+
+  // ---------- 历史会议（本地数据库） ----------
+  async function openHistory() {
+    if (!hasApi()) { alert('历史会议功能仅在桌面客户端可用'); return; }
+    let list = [];
+    try { list = await window.api.db.listMeetings(); } catch (e) { console.error('[Roundtable] listMeetings failed', e); }
+    let overlay = $('#historyModal');
+    if (!overlay) {
+      overlay = el('div', 'modal-overlay');
+      overlay.id = 'historyModal';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;' +
+        'align-items:center;justify-content:center;z-index:1000;';
+      document.body.appendChild(overlay);
+    }
+    overlay.innerHTML = '';
+    const card = el('div', 'settings-card');
+    card.style.maxHeight = '80vh';
+    card.style.overflowY = 'auto';
+    const bar = el('div', 'set-bar');
+    bar.appendChild(el('div', 'set-title', '历史会议'));
+    const close = el('button', 'btn btn-sm btn-ghost has-ic ic-x', '关闭');
+    close.addEventListener('click', () => overlay.classList.add('hidden'));
+    bar.appendChild(close);
+    card.appendChild(bar);
+
+    if (!list.length) {
+      card.appendChild(el('div', 'prov-empty',
+        '还没有已保存的会议记录。开始一场会议后，发言会自动保存到本地数据库，可在此调出查看与导出。'));
+    } else {
+      list.forEach(function (m) {
+        const row = el('div', 'hist-row');
+        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;' +
+          'padding:10px 4px;border-bottom:1px solid var(--border)';
+        const info = el('div', 'hist-info');
+        info.appendChild(el('div', 'hist-title', m.title || m.topic || '（无标题）'));
+        const d = new Date(m.created_at);
+        const pad = (n) => String(n).padStart(2, '0');
+        const ds = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+          pad(d.getHours()) + ':' + pad(d.getMinutes());
+        info.appendChild(el('div', 'hist-meta', ds + ' · ' + (m.msg_count || 0) + ' 条 · ' +
+          (m.scene || '') + ' / ' + (m.mode || '')));
+        row.appendChild(info);
+        const acts = el('div', 'hist-acts');
+        acts.style.cssText = 'display:flex;gap:6px';
+        const open = el('button', 'btn btn-xs btn-primary', '打开');
+        open.addEventListener('click', () => loadHistoryMeeting(m.id, overlay));
+        const del = el('button', 'btn btn-xs btn-ghost', '删除');
+        del.addEventListener('click', async () => {
+          if (!confirm('删除该会议记录？此操作不可恢复。')) return;
+          try { await window.api.db.deleteMeeting(m.id); openHistory(); } catch (e) { console.error(e); }
+        });
+        acts.appendChild(open); acts.appendChild(del);
+        row.appendChild(acts);
+        card.appendChild(row);
+      });
+    }
+    overlay.appendChild(card);
+    overlay.classList.remove('hidden');
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.add('hidden'); };
+  }
+
+  async function loadHistoryMeeting(id, overlay) {
+    let msgs = [];
+    try { msgs = await window.api.db.getMeeting(id); } catch (e) { console.error('[Roundtable] getMeeting failed', e); return; }
+    if (overlay) overlay.classList.add('hidden');
+    $('#chat').innerHTML = '';
+    renderTranscriptInstant(msgs);
+    engine = { transcript: msgs, done: true };   // 供"导出纪要"复用当前记录
+    running = false;
+    $('#startBtn').disabled = false;
+    $('#startBtn').textContent = '开始会议';
+    const cp = $('#composer'); if (cp) cp.classList.add('hidden');
+    setStatus('已载入历史会议（只读）。点击「导出纪要」可保存为 Markdown 文件。');
   }
 
   // ---------- 分支 / 回溯 ----------
@@ -1285,6 +1416,7 @@
         else { p.classList.add('hidden'); pendingSnap = null; }
       },
       'settings': openSettings,
+      'history': openHistory,
     };
     Object.entries(menuActions).forEach(([name, fn]) => {
       document.addEventListener('menu:' + name, fn);
@@ -1295,6 +1427,10 @@
       const sel = $('#speedSel');
       if (sel) { sel.value = e.detail || 'normal'; sel.dispatchEvent(new Event('change')); }
     });
+
+    // 桌面端：把旧 localStorage 明文密钥加密迁入主进程库，并加载 providers
+    migrateLegacyProviders();
+    loadProvidersFromMain();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

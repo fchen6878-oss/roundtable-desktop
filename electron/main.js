@@ -1,6 +1,7 @@
 'use strict';
 
-const { app, BrowserWindow, protocol, Menu } = require('electron');
+const { app, BrowserWindow, protocol, Menu, ipcMain } = require('electron');
+const db = require('./db');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -128,7 +129,9 @@ function buildMenu(win) {
         { type: 'separator' },
         { label: '发送导演指令...', accelerator: 'CmdOrCtrl+D', click: () => send('director') },
         { type: 'separator' },
-        { label: '重置会议', accelerator: 'CmdOrCtrl+R', click: () => send('reset') }
+        { label: '重置会议', accelerator: 'CmdOrCtrl+R', click: () => send('reset') },
+        { type: 'separator' },
+        { label: '历史会议', click: () => send('history') }
       ]
     },
     {
@@ -246,7 +249,8 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -290,6 +294,20 @@ app.whenReady().then(() => {
   registerAppProtocol();
   const win = createWindow();
   buildMenu(win);
+
+  // 初始化本地存储层（SQLite + 密钥加密），并注册渲染层可用的 IPC 通道
+  db.initDb();
+  ipcMain.handle('db:createMeeting', (e, data) => db.createMeeting(data));
+  ipcMain.handle('db:appendMessage', (e, id, msg) => { db.appendMessage(id, msg); return true; });
+  ipcMain.handle('db:listMeetings', () => db.listMeetings());
+  ipcMain.handle('db:getMeeting', (e, id) => db.getMeeting(id));
+  ipcMain.handle('db:deleteMeeting', (e, id) => { db.deleteMeeting(id); return true; });
+  ipcMain.handle('db:updateMeeting', (e, id, patch) => { db.updateMeeting(id, patch); return true; });
+  ipcMain.handle('key:listProviders', () => db.listProviders());
+  ipcMain.handle('key:setProvider', (e, key, cfg) => { db.setProvider(key, cfg); return true; });
+  ipcMain.handle('key:deleteProvider', (e, key) => { db.deleteProvider(key); return true; });
+  ipcMain.handle('key:getDecryptedKey', (e, key) => db.getDecryptedKey(key));
+  ipcMain.handle('key:migrate', (e, legacy) => { db.migrate(legacy); return true; });
 
   // 自动更新：仅打包后（分发版本）才检查，开发态跳过
   if (app.isPackaged) {
