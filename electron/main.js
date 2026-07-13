@@ -35,68 +35,143 @@ function mimeOf(p) {
 }
 
 // ── 带用户反馈的更新检查 ──
+// ── 自动更新统一状态机 ──
+// 一份持久监听同时处理「自动后台检查」与「用户主动点击检查」两种场景，
+// 彻底修掉旧实现里 update-available 弹窗关闭时 cleanup 误删 update-downloaded 监听
+// 导致下载完成不弹安装、以及「稍后」后永不安装的缺陷。
+const updater = {
+  userInvoked: false,   // 本次检查是否为用户主动点击「检查更新」
+  checking: false,
+  downloading: false,
+  downloaded: false,
+  percent: 0,
+  win: null,
+  _lastMenu: 0
+};
+
+// 帮助菜单里「检查更新」项的动态文案：给用户可见的进度/状态反馈
+function updateMenuLabel() {
+  if (updater.downloaded) return '安装更新（已下载）';
+  if (updater.downloading) return `下载更新中 ${updater.percent}%`;
+  if (updater.checking) return '正在检查更新…';
+  return '检查更新…';
+}
+
+// 轻量提示：优先系统通知，无通知能力时回退对话框
+function updateNotice(win, opts) {
+  const { Notification } = require('electron');
+  if (Notification.isSupported()) {
+    new Notification({ title: opts.title, body: opts.body }).show();
+  } else if (win && !win.isDestroyed()) {
+    const { dialog } = require('electron');
+    dialog.showMessageBox(win, { type: 'info', title: opts.title, message: opts.body, buttons: ['确定'] });
+  }
+}
+
+// 重建菜单以刷新「检查更新」文案（节流，避免 download-progress 频繁重建引发闪烁）
+function refreshUpdateMenu() {
+  if (!updater.win || updater.win.isDestroyed()) return;
+  const now = Date.now();
+  if (now - updater._lastMenu < 700) return;
+  updater._lastMenu = now;
+  try { buildMenu(updater.win); } catch (e) {}
+}
+
+// 注册持久化更新监听（app ready 后调用一次）
+function setupAutoUpdater(win) {
+  if (!app.isPackaged) return;
+  updater.win = win;
+  autoUpdater.autoDownload = true;          // 发现新版本自动下载
+  autoUpdater.autoInstallOnAppQuit = true;  // 退出应用时自动完成安装（即便选了「稍后」）
+
+  autoUpdater.on('update-available', (info) => {
+    updater.checking = false;
+    updater.downloading = true;
+    updater.percent = 0;
+    updateNotice(win, {
+      title: `发现新版本 v${info.version}`,
+      body: '已开始在后台下载，完成后将提示您安装。'
+    });
+    refreshUpdateMenu();
+  });
+
+  autoUpdater.on('download-progress', (p) => {
+    const pct = Math.round(p.percent || 0);
+    if (pct !== updater.percent) {
+      updater.percent = pct;
+      refreshUpdateMenu(); // 菜单项显示「下载更新中 45%」
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    updater.downloading = false;
+    updater.downloaded = true;
+    updater.percent = 100;
+    refreshUpdateMenu();
+    const { dialog } = require('electron');
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: '更新已就绪',
+      message: `新版本 v${info.version} 已下载完成`,
+      detail: '是否立即重启并安装？\n（选择「稍后」也会在您退出应用时自动安装）',
+      buttons: ['立即重启安装', '稍后'],
+      defaultId: 0,
+      cancelId: 1
+    }).then(({ response }) => {
+      if (response === 0) {
+        // isSilent=false 显示安装进度；isForceRunAfter=true 装完自动启动新版本
+        autoUpdater.quitAndInstall(false, true);
+      }
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    updater.checking = false;
+    refreshUpdateMenu();
+    if (updater.userInvoked) {
+      updateNotice(win, { title: '已是最新版本', body: `当前已是最新（v${app.getVersion()}）` });
+    }
+    updater.userInvoked = false;
+  });
+
+  autoUpdater.on('error', (err) => {
+    updater.checking = false;
+    updater.downloading = false;
+    refreshUpdateMenu();
+    // 自动后台检查失败静默；仅用户主动检查时才提示
+    if (updater.userInvoked) {
+      updateNotice(win, { title: '检查更新失败', body: err?.message || '请检查网络连接' });
+    }
+    updater.userInvoked = false;
+  });
+
+  // 启动后自动后台检查一次（不打扰用户）
+  autoUpdater.checkForUpdates().catch(() => {});
+}
+
+// 用户点击「帮助 → 检查更新」时调用
 function checkForUpdatesWithFeedback(win) {
   if (!app.isPackaged) {
-    const { Notification } = require('electron');
-    // 开发模式也用 toast，不弹 dialog（避免多余按钮）
-    if (Notification.isSupported()) {
-      new Notification({ title: '圆桌会议', body: '当前为开发模式，跳过自动更新检查。' }).show();
-    }
+    updateNotice(win, { title: '圆桌会议', body: '当前为开发模式，跳过自动更新检查。' });
     return;
   }
-  const { dialog, Notification } = require('electron');
-
-  // 状态防抖：避免连续点击重复触发
-  if (checkForUpdatesWithFeedback._checking) return;
-  checkForUpdatesWithFeedback._checking = true;
-
-  // 监听事件（一次性，用完即弃）
-  const cleanup = () => {
-    autoUpdater.removeAllListeners('update-available');
-    autoUpdater.removeAllListeners('update-not-available');
-    autoUpdater.removeAllListeners('error');
-    autoUpdater.removeAllListeners('update-downloaded');
-    checkForUpdatesWithFeedback._checking = false;
-  };
-
-  autoUpdater.once('update-available', (info) => {
-    dialog.showMessageBox(win, {
-      type: 'info', title: '发现新版本',
-      message: `发现新版本 ${info.version}`,
-      detail: '正在自动下载，完成后会提示您重启安装。',
-      buttons: ['确定']
-    }).finally(cleanup);
-  });
-
-  autoUpdater.once('update-not-available', () => {
-    // 用轻量 toast 风格通知
-    if (Notification.isSupported()) {
-      new Notification({ title: '圆桌会议', body: '当前已是最新版本。' }).show();
-    }
-    cleanup();
-  });
-
-  autoUpdater.once('update-downloaded', (info) => {
-    dialog.showMessageBox(win, {
-      type: 'info', title: '更新已下载',
-      message: `${info.version} 已下载完成`,
-      detail: '是否现在重启并安装新版本？',
-      buttons: ['立即重启', '稍后']
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall();
-    }).finally(cleanup);
-  });
-
-  autoUpdater.once('error', (err) => {
-    dialog.showMessageBox(win, {
-      type: 'warning', title: '检查更新失败',
-      message: '无法检查更新',
-      detail: err?.message || err || '请检查网络连接。',
-      buttons: ['确定']
-    }).finally(cleanup);
-  });
-
-  autoUpdater.checkForUpdates();
+  // 已处于某阶段：直接告知当前状态，避免重复触发检查
+  if (updater.downloaded) {
+    updateNotice(win, { title: '更新已就绪', body: '新版本已下载完成，可在提示中重启安装。' });
+    return;
+  }
+  if (updater.downloading) {
+    updateNotice(win, { title: '正在下载更新', body: `当前进度 ${updater.percent}%` });
+    return;
+  }
+  if (updater.checking) {
+    updateNotice(win, { title: '正在检查更新', body: '请稍候…' });
+    return;
+  }
+  updater.userInvoked = true;
+  updater.checking = true;
+  refreshUpdateMenu();
+  autoUpdater.checkForUpdates().catch(() => {});
 }
 
 // ── 自定义应用菜单 ──
@@ -210,7 +285,7 @@ function buildMenu(win) {
           }
         },
         { type: 'separator' },
-        { label: '检查更新...', click: () => checkForUpdatesWithFeedback(win) }
+        { label: updateMenuLabel(), click: () => checkForUpdatesWithFeedback(win) }
       ]
     }
   ];
@@ -309,23 +384,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('key:getDecryptedKey', (e, key) => db.getDecryptedKey(key));
   ipcMain.handle('key:migrate', async (e, legacy) => { await db.migrate(legacy); return true; });
 
-  // 自动更新：仅打包后（分发版本）才检查，开发态跳过
-  if (app.isPackaged) {
-    autoUpdater.autoDownload = true;
-    // 发现新版本时直接提示用户（无需点击"检查更新"）
-    autoUpdater.once('update-available', (info) => {
-      const { Notification } = require('electron');
-      if (Notification.isSupported()) {
-        new Notification({
-          title: `圆桌会议 · 发现新版本 v${info.version}`,
-          body: '正在后台下载更新，完成后将提示您安装。'
-        }).show();
-      }
-    });
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {
-      // 无网络 / 无发布配置时静默忽略
-    });
-  }
+  // 自动更新：注册统一监听器并后台检查一次（setupAutoUpdater 内部已判断 app.isPackaged）
+  setupAutoUpdater(win);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
